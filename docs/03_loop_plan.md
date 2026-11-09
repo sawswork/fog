@@ -435,8 +435,9 @@ F-12（手入力サイズ）、F-15（針ロスト・根掛かりマップの完
 ### L38 シルフィのテーマ本体（2026-11-09）
 
 受け入れ条件
-- [x] 画像は Gemini `gemini-3-pro-image-preview`（Nano Banana Pro）で生成：背景（9:16）・魔法陣・シルフィ（短い白髪・赤い瞳・黒のリブタートル・白いジャケット）・地図の光の枠・撮影と図鑑のボタンの印・ログ/図鑑/シートの背景。マゼンタ背景は `scripts/theme_chroma_key.py` で透過 PNG に
-- [x] `theme.json` の層に `motion`（float / breathe / sway / spin / drift / pulse）と `effect`（fireflies / leaves / sparkles / bubbles）を追加（Core にテスト）。シルフィは上下にふわり、魔法陣はゆっくり回り、背景は寄って戻る。光の粒・きらめき・舞う葉が常に動く
+- [x] 画像は Gemini `gemini-3-pro-image-preview`（Nano Banana Pro）のネイティブ API に **開発者のモック画像とシルフィの参考画像を渡して** 生成（2K）。ホームの背景はモックから UI だけを消した 1 枚絵（顔・立体の地図台・透明な泡はモックのまま）。撮影と図鑑の印、ログ/図鑑/シートの背景も生成。マゼンタ背景の素材は `scripts/theme_chroma_key.py` で透過 PNG に
+- [x] 部品の座標を背景の泡・魔法陣に合わせる（`docs/ui/sylphie_layout_preview.png`）
+- [x] `theme.json` の層に `motion`（float / breathe / sway / spin / drift / pulse）と `effect`（fireflies / leaves / sparkles / bubbles）を追加（Core にテスト）。光の粒・きらめき・舞う葉が常に動き、背景はごくゆっくり寄って戻る（シルフィは 1 枚絵の一部なので、このビルドでは浮かない）
 - [x] 動きは Core Animation だけ、効果は 30 fps の Canvas。前面でないとき・「視差効果を減らす」では止まる（固まり・電池への配慮）
 - [x] 下の 5 つのボタン（`nav`）を無くし、その分だけ地図を下まで広げる。撮影と図鑑は右中段の小さな印、ログは直近の釣果、釣り場は地図、設定・相談・月は見出しから
 - [ ] ios-build 緑 → TestFlight へ配信
