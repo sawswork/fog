@@ -89,16 +89,20 @@ final class ThemeSpecTests: XCTestCase {
         """
         let spec = try ThemeSpec.parse(Data(json.utf8))
         let layers = try XCTUnwrap(spec.home?.layers)
-        XCTAssertEqual(layers.count, 3)
-        XCTAssertEqual(layers[0].motion, "drift")
-        XCTAssertEqual(layers[0].speed, 0.5)
-        XCTAssertEqual(layers[0].amount, 3)               // 9 → 3
-        XCTAssertEqual(layers[1].effect, "fireflies")
-        XCTAssertEqual(layers[1].image, "")
-        XCTAssertEqual(layers[1].count, 200)              // 500 → 200
-        XCTAssertEqual(layers[1].parsedColor?.g ?? 0, 0xE3 / 255.0, accuracy: 0.001)
-        XCTAssertEqual(layers[2].speed, 0.1)              // 0 → 0.1
-        XCTAssertNil(layers[2].effect)
-        XCTAssertNil(layers[2].parsedColor)
+        XCTAssertEqual(layers.count, 3)                   // 画像も効果も無い層は落ちる
+        // 並びは z 順（bg 0 → char 0 → fireflies 10）なので名前で引く
+        let bg = try XCTUnwrap(layers.first { $0.image == "bg_home" })
+        let fire = try XCTUnwrap(layers.first { $0.effect == "fireflies" })
+        let char = try XCTUnwrap(layers.first { $0.image == "char_home" })
+        XCTAssertEqual(layers.last?.effect, "fireflies")
+        XCTAssertEqual(bg.motion, "drift")
+        XCTAssertEqual(bg.speed, 0.5)
+        XCTAssertEqual(bg.amount, 3)                      // 9 → 3
+        XCTAssertEqual(fire.image, "")
+        XCTAssertEqual(fire.count, 200)                   // 500 → 200
+        XCTAssertEqual(fire.parsedColor?.g ?? 0, 0xE3 / 255.0, accuracy: 0.001)
+        XCTAssertEqual(char.speed, 0.1)                   // 0 → 0.1
+        XCTAssertNil(char.effect)
+        XCTAssertNil(char.parsedColor)
     }
 }
