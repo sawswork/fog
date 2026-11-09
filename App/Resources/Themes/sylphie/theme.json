@@ -2,7 +2,10 @@
   "version": 1,
   "label": "シルフィ（森の魔法陣）",
   "base": "grimoireDark",
-  "fonts": { "text": "serif", "number": "serif" },
+  "fonts": {
+    "text": "serif",
+    "number": "serif"
+  },
   "colors": {
     "accent": "#9BE3B3",
     "secondary": "#5FD3F3",
@@ -15,22 +18,174 @@
     "hidesTabBar": true,
     "scrim": 0.0,
     "layers": [
-      { "image": "bg_home",    "rect": [0, 0, 1, 1],             "fit": "fill", "z": 0,  "motion": "drift", "speed": 1, "amount": 0.6 },
-      { "effect": "fireflies", "rect": [0, 0, 1, 1],             "z": 10, "count": 30, "color": "#9BE3B3" },
-      { "effect": "sparkles",  "rect": [0.05, 0.05, 0.90, 0.60], "z": 12, "count": 14, "color": "#F2D06B", "opacity": 0.9 },
-      { "effect": "leaves",    "rect": [0, 0, 1, 1],             "z": 14, "count": 8,  "color": "#8FD9A0", "opacity": 0.8 }
+      {
+        "image": "bg_home",
+        "rect": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "fit": "fill",
+        "z": 0,
+        "motion": "drift",
+        "speed": 1,
+        "amount": 0.6
+      },
+      {
+        "effect": "fireflies",
+        "rect": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "z": 10,
+        "count": 30,
+        "color": "#9BE3B3"
+      },
+      {
+        "effect": "sparkles",
+        "rect": [
+          0.05,
+          0.05,
+          0.9,
+          0.6
+        ],
+        "z": 12,
+        "count": 14,
+        "color": "#F2D06B",
+        "opacity": 0.9
+      },
+      {
+        "effect": "leaves",
+        "rect": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "z": 14,
+        "count": 8,
+        "color": "#8FD9A0",
+        "opacity": 0.8
+      }
     ],
     "blocks": [
-      { "type": "header",        "rect": [0.04, 0.00, 0.92, 0.12],   "z": 90 },
-      { "type": "score",         "rect": [0.36, 0.09, 0.28, 0.13],   "z": 50 },
-      { "type": "chart",         "rect": [0.13, 0.345, 0.34, 0.13],  "z": 60, "padding": 2 },
-      { "type": "table",         "rect": [0.53, 0.345, 0.34, 0.13],  "z": 60, "padding": 2 },
-      { "type": "feedLine",      "rect": [0.10, 0.505, 0.80, 0.03],  "z": 60 },
-      { "type": "recentCatches", "rect": [0.04, 0.55, 0.42, 0.13],   "z": 60, "action": "log" },
-      { "type": "week",          "rect": [0.68, 0.555, 0.30, 0.065], "z": 60, "padding": 2 },
-      { "type": "button",        "rect": [0.74, 0.628, 0.10, 0.045], "z": 70, "image": "tab_guide",  "action": "guide" },
-      { "type": "button",        "rect": [0.86, 0.618, 0.12, 0.055], "z": 70, "image": "tab_camera", "action": "capture" },
-      { "type": "text",          "rect": [0.00, 0.70, 1.00, 0.22],   "z": 80, "text": "", "action": "spots" }
+      {
+        "type": "header",
+        "rect": [
+          0.04,
+          0.0,
+          0.92,
+          0.12
+        ],
+        "z": 90
+      },
+      {
+        "type": "score",
+        "rect": [
+          0.36,
+          0.09,
+          0.28,
+          0.13
+        ],
+        "z": 50
+      },
+      {
+        "type": "chart",
+        "rect": [
+          0.05,
+          0.325,
+          0.44,
+          0.175
+        ],
+        "z": 60,
+        "background": "panel",
+        "padding": 4
+      },
+      {
+        "type": "table",
+        "rect": [
+          0.51,
+          0.325,
+          0.46,
+          0.175
+        ],
+        "z": 60,
+        "background": "panel",
+        "padding": 4
+      },
+      {
+        "type": "feedLine",
+        "rect": [
+          0.06,
+          0.508,
+          0.88,
+          0.032
+        ],
+        "z": 60,
+        "background": "panel",
+        "padding": 2
+      },
+      {
+        "type": "recentCatches",
+        "rect": [
+          0.04,
+          0.55,
+          0.44,
+          0.14
+        ],
+        "z": 60,
+        "action": "log"
+      },
+      {
+        "type": "week",
+        "rect": [
+          0.5,
+          0.55,
+          0.47,
+          0.08
+        ],
+        "z": 60,
+        "background": "panel",
+        "padding": 4
+      },
+      {
+        "type": "button",
+        "rect": [
+          0.74,
+          0.642,
+          0.1,
+          0.045
+        ],
+        "z": 70,
+        "image": "tab_guide",
+        "action": "guide"
+      },
+      {
+        "type": "button",
+        "rect": [
+          0.86,
+          0.632,
+          0.12,
+          0.055
+        ],
+        "z": 70,
+        "image": "tab_camera",
+        "action": "capture"
+      },
+      {
+        "type": "miniMap",
+        "rect": [
+          0.03,
+          0.715,
+          0.94,
+          0.205
+        ],
+        "z": 50,
+        "action": "spots"
+      }
     ]
   }
 }
