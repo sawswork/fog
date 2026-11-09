@@ -1,194 +1,1806 @@
 [
- {"id":"ainame","name":"アイナメ","aliases":["アブラコ","アブラメ"],"groups":["根魚"]},
- {"id":"kujime","name":"クジメ","groups":["根魚"]},
- {"id":"hokke","name":"ホッケ","groups":["根魚","北の魚"]},
- {"id":"kurosoi","name":"クロソイ","aliases":["ソイ"],"groups":["根魚"]},
- {"id":"mazoi","name":"キツネメバル","aliases":["マゾイ"],"groups":["根魚"]},
- {"id":"shimazoi","name":"シマゾイ","groups":["根魚","北の魚"]},
- {"id":"ezomebaru","name":"エゾメバル","aliases":["ガヤ"],"groups":["根魚","北の魚"]},
- {"id":"murasoi","name":"ムラソイ","aliases":["ハチガラ"],"groups":["根魚"]},
- {"id":"ougonmurasoi","name":"オウゴンムラソイ","aliases":["ハチガラ"],"groups":["根魚"]},
- {"id":"takanohadai","name":"タカノハダイ","groups":["根魚"]},
- {"id":"mebaru_aka","name":"アカメバル","aliases":["メバル"],"groups":["根魚"]},
- {"id":"mebaru_kuro","name":"クロメバル","aliases":["メバル"],"groups":["根魚"]},
- {"id":"mebaru_shiro","name":"シロメバル","aliases":["メバル"],"groups":["根魚"]},
- {"id":"usumebaru","name":"ウスメバル","aliases":["沖メバル"],"groups":["根魚","船"]},
- {"id":"kasago","name":"カサゴ","aliases":["ガシラ","アラカブ"],"groups":["根魚"]},
- {"id":"ukkarikasago","name":"ウッカリカサゴ","groups":["根魚","船"]},
- {"id":"onikasago","name":"オニカサゴ","aliases":["イズカサゴ"],"groups":["根魚","船"]},
- {"id":"akahata","name":"アカハタ","groups":["根魚","ハタ"]},
- {"id":"kijihata","name":"キジハタ","aliases":["アコウ"],"groups":["根魚","ハタ"]},
- {"id":"oomonhata","name":"オオモンハタ","groups":["根魚","ハタ"]},
- {"id":"mahata","name":"マハタ","groups":["根魚","ハタ","船"]},
- {"id":"kue","name":"クエ","aliases":["アラ","モロコ"],"groups":["根魚","ハタ","船"]},
- {"id":"ara","name":"アラ","groups":["根魚","船"]},
- {"id":"aoharata","name":"アオハタ","groups":["根魚","ハタ"]},
- {"id":"houbou","name":"ホウボウ","groups":["船","底物"]},
- {"id":"kanagashira","name":"カナガシラ","groups":["船","底物"]},
- {"id":"magochi","name":"マゴチ","aliases":["コチ"],"groups":["フラット"]},
- {"id":"hirame","name":"ヒラメ","groups":["フラット"]},
- {"id":"makogarei","name":"マコガレイ","groups":["カレイ"]},
- {"id":"kurogashiragarei","name":"クロガシラガレイ","groups":["カレイ","北の魚"]},
- {"id":"ishigarei","name":"イシガレイ","groups":["カレイ"]},
- {"id":"magarei","name":"マガレイ","groups":["カレイ","北の魚"]},
- {"id":"sunagarei","name":"スナガレイ","groups":["カレイ","北の魚"]},
- {"id":"souhachi","name":"ソウハチ","groups":["カレイ","北の魚"]},
- {"id":"babagarei","name":"ババガレイ","aliases":["ナメタガレイ"],"groups":["カレイ","北の魚"]},
- {"id":"meitagarei","name":"メイタガレイ","groups":["カレイ"]},
- {"id":"hoshigarei","name":"ホシガレイ","groups":["カレイ"]},
- {"id":"matsukawa","name":"マツカワ","groups":["カレイ","北の魚"]},
- {"id":"akagarei","name":"アカガレイ","groups":["カレイ","船"]},
- {"id":"kajika_toge","name":"トゲカジカ","aliases":["カジカ","ナベコワシ"],"groups":["根魚","北の魚"]},
- {"id":"kajika_gisu","name":"ギスカジカ","aliases":["カジカ"],"groups":["根魚","北の魚"]},
- {"id":"kajika_kema","name":"ケムシカジカ","aliases":["トウベツカジカ"],"groups":["根魚","北の魚"]},
- {"id":"komai","name":"コマイ","aliases":["カンカイ"],"groups":["北の魚"]},
- {"id":"madara","name":"マダラ","aliases":["タラ"],"groups":["北の魚","船"]},
- {"id":"suketoudara","name":"スケトウダラ","groups":["北の魚","船"]},
- {"id":"nishin","name":"ニシン","groups":["北の魚","回遊魚"]},
- {"id":"chika","name":"チカ","groups":["北の魚","小物"]},
- {"id":"wakasagi","name":"ワカサギ","groups":["淡水","小物","北の魚"]},
- {"id":"kyuuriuo","name":"キュウリウオ","groups":["北の魚","小物"]},
- {"id":"shishamo","name":"シシャモ","groups":["北の魚"]},
- {"id":"sake","name":"サケ","aliases":["シロザケ","アキアジ"],"groups":["北の魚","サケマス"]},
- {"id":"karafutomasu","name":"カラフトマス","groups":["北の魚","サケマス"]},
- {"id":"sakuramasu","name":"サクラマス","aliases":["ヤマメ"],"groups":["サケマス","渓流"]},
- {"id":"yamame","name":"ヤマメ","groups":["渓流","淡水"]},
- {"id":"amago","name":"アマゴ","groups":["渓流","淡水"]},
- {"id":"iwana","name":"イワナ","groups":["渓流","淡水"]},
- {"id":"amemasu","name":"アメマス","aliases":["エゾイワナ"],"groups":["渓流","北の魚"]},
- {"id":"nijimasu","name":"ニジマス","aliases":["レインボートラウト"],"groups":["渓流","淡水","管理釣り場"]},
- {"id":"brown","name":"ブラウントラウト","groups":["渓流","淡水"]},
- {"id":"itou","name":"イトウ","groups":["北の魚","淡水","渓流"]},
- {"id":"ayu","name":"アユ","groups":["淡水"]},
- {"id":"ugui","name":"ウグイ","aliases":["ハヤ"],"groups":["淡水","外道"]},
- {"id":"oikawa","name":"オイカワ","groups":["淡水","小物"]},
- {"id":"koi","name":"コイ","groups":["淡水"]},
- {"id":"funa","name":"ギンブナ","aliases":["フナ","マブナ"],"groups":["淡水"]},
- {"id":"herabuna","name":"ゲンゴロウブナ","aliases":["ヘラブナ"],"groups":["淡水"]},
- {"id":"largemouth","name":"オオクチバス","aliases":["ブラックバス","ラージマウスバス"],"groups":["淡水","バス"]},
- {"id":"smallmouth","name":"コクチバス","aliases":["スモールマウスバス"],"groups":["淡水","バス"]},
- {"id":"bluegill","name":"ブルーギル","groups":["淡水"]},
- {"id":"namazu","name":"ナマズ","groups":["淡水"]},
- {"id":"raigyo","name":"カムルチー","aliases":["ライギョ","雷魚"],"groups":["淡水"]},
- {"id":"unagi","name":"ニホンウナギ","aliases":["ウナギ"],"groups":["淡水","汽水"]},
- {"id":"tenagaebi","name":"テナガエビ","groups":["淡水","汽水","小物"],"noFishBase":true},
- {"id":"mahaze","name":"マハゼ","aliases":["ハゼ"],"groups":["汽水","小物"]},
- {"id":"urohaze","name":"ウロハゼ","groups":["汽水","小物"]},
- {"id":"shirogisu","name":"シロギス","aliases":["キス"],"groups":["投げ","砂浜"]},
- {"id":"megochi","name":"ネズミゴチ","aliases":["メゴチ"],"groups":["投げ","砂浜","外道"]},
- {"id":"ishimochi","name":"シログチ","aliases":["イシモチ","グチ"],"groups":["投げ","船"]},
- {"id":"suzuki","name":"スズキ","aliases":["シーバス","セイゴ","フッコ"],"groups":["ルアー","汽水"]},
- {"id":"hirasuzuki","name":"ヒラスズキ","groups":["ルアー","磯"]},
- {"id":"madai","name":"マダイ","aliases":["タイ"],"groups":["タイ","船"]},
- {"id":"chidai","name":"チダイ","aliases":["ハナダイ"],"groups":["タイ","船"]},
- {"id":"kidai","name":"キダイ","aliases":["レンコダイ"],"groups":["タイ","船"]},
- {"id":"kurodai","name":"クロダイ","aliases":["チヌ"],"groups":["タイ","堤防"]},
- {"id":"kichinu","name":"キチヌ","aliases":["キビレ"],"groups":["タイ","汽水"]},
- {"id":"hedai","name":"ヘダイ","groups":["タイ"]},
- {"id":"mejina","name":"メジナ","aliases":["グレ","クロ"],"groups":["磯"]},
- {"id":"kuromejina","name":"クロメジナ","aliases":["オナガグレ"],"groups":["磯"]},
- {"id":"isaki","name":"イサキ","groups":["船","磯"]},
- {"id":"ishidai","name":"イシダイ","aliases":["サンバソウ"],"groups":["磯","底物"]},
- {"id":"ishigakidai","name":"イシガキダイ","groups":["磯","底物"]},
- {"id":"kawahagi","name":"カワハギ","groups":["堤防","船"]},
- {"id":"umazurahagi","name":"ウマヅラハギ","groups":["堤防","船"]},
- {"id":"aigo","name":"アイゴ","aliases":["バリ"],"groups":["磯","危険"]},
- {"id":"umitanago","name":"ウミタナゴ","groups":["堤防","小物"]},
- {"id":"aji","name":"マアジ","aliases":["アジ"],"groups":["回遊魚","堤防","サビキ"]},
- {"id":"maruaji","name":"マルアジ","aliases":["アオアジ"],"groups":["回遊魚","堤防"]},
- {"id":"shimaaji","name":"シマアジ","groups":["回遊魚","船"]},
- {"id":"kaiwari","name":"カイワリ","groups":["船"]},
- {"id":"gingameaji","name":"ギンガメアジ","aliases":["メッキ"],"groups":["ルアー","回遊魚"]},
- {"id":"rouninaji","name":"ロウニンアジ","aliases":["GT"],"groups":["ルアー","回遊魚"]},
- {"id":"masaba","name":"マサバ","aliases":["サバ"],"groups":["回遊魚","堤防","サビキ"]},
- {"id":"gomasaba","name":"ゴマサバ","groups":["回遊魚","堤防"]},
- {"id":"maiwashi","name":"マイワシ","aliases":["イワシ"],"groups":["回遊魚","サビキ","小物"]},
- {"id":"katakuchi","name":"カタクチイワシ","groups":["回遊魚","サビキ","小物"]},
- {"id":"urume","name":"ウルメイワシ","groups":["回遊魚","サビキ","小物"]},
- {"id":"konoshiro","name":"コノシロ","aliases":["コハダ"],"groups":["堤防","サビキ"]},
- {"id":"sayori","name":"サヨリ","groups":["堤防","小物"]},
- {"id":"bora","name":"ボラ","groups":["汽水","堤防","外道"]},
- {"id":"buri","name":"ブリ","aliases":["イナダ","ワラサ","ハマチ","フクラギ"],"groups":["青物","回遊魚"]},
- {"id":"hiramasa","name":"ヒラマサ","groups":["青物","回遊魚"]},
- {"id":"kanpachi","name":"カンパチ","aliases":["ショゴ"],"groups":["青物","回遊魚"]},
- {"id":"sawara","name":"サワラ","aliases":["サゴシ"],"groups":["青物","回遊魚"]},
- {"id":"tachiuo","name":"タチウオ","groups":["回遊魚","堤防","船"]},
- {"id":"soudagatsuo","name":"マルソウダ","aliases":["ソウダガツオ"],"groups":["青物","回遊魚"]},
- {"id":"hiragatsuo","name":"ヒラソウダ","groups":["青物","回遊魚"]},
- {"id":"katsuo","name":"カツオ","groups":["青物","回遊魚","船"]},
- {"id":"kihada","name":"キハダ","aliases":["キハダマグロ"],"groups":["青物","回遊魚","船"]},
- {"id":"kuromaguro","name":"クロマグロ","aliases":["ホンマグロ"],"groups":["青物","回遊魚","船"]},
- {"id":"shiira","name":"シイラ","groups":["回遊魚","ルアー"]},
- {"id":"kamasu","name":"アカカマス","aliases":["カマス"],"groups":["回遊魚","堤防"]},
- {"id":"yamatokamasu","name":"ヤマトカマス","groups":["回遊魚","堤防"]},
- {"id":"tobiuo","name":"トビウオ","groups":["回遊魚"]},
- {"id":"maanago","name":"マアナゴ","aliases":["アナゴ"],"groups":["船","堤防","夜釣り"]},
- {"id":"utsubo","name":"ウツボ","groups":["磯","外道"]},
- {"id":"kyuusen","name":"キュウセン","aliases":["ベラ"],"groups":["堤防","外道"]},
- {"id":"sasanohabera","name":"ササノハベラ","aliases":["ベラ"],"groups":["堤防","外道"]},
- {"id":"nenbutsudai","name":"ネンブツダイ","groups":["堤防","外道","小物"]},
- {"id":"suzumedai","name":"スズメダイ","groups":["堤防","外道","小物"]},
- {"id":"gonzui","name":"ゴンズイ","groups":["堤防","危険"]},
- {"id":"haokoze","name":"ハオコゼ","groups":["堤防","危険"]},
- {"id":"minokasago","name":"ミノカサゴ","groups":["危険"]},
- {"id":"kusafugu","name":"クサフグ","groups":["堤防","外道","フグ"]},
- {"id":"shousaifugu","name":"ショウサイフグ","groups":["船","フグ"]},
- {"id":"torafugu","name":"トラフグ","groups":["船","フグ"]},
- {"id":"himeji","name":"ヒメジ","groups":["投げ","外道"]},
- {"id":"akamutsu","name":"アカムツ","aliases":["ノドグロ"],"groups":["船","深場"]},
- {"id":"kuromutsu","name":"クロムツ","groups":["船","深場"]},
- {"id":"mutsu","name":"ムツ","groups":["船","深場"]},
- {"id":"kinmedai","name":"キンメダイ","groups":["船","深場"]},
- {"id":"akaamadai","name":"アカアマダイ","aliases":["アマダイ","グジ"],"groups":["船"]},
- {"id":"itoyoridai","name":"イトヨリダイ","groups":["船"]},
- {"id":"korodai","name":"コロダイ","groups":["磯"]},
- {"id":"koshoudai","name":"コショウダイ","groups":["磯"]},
- {"id":"madako","name":"マダコ","aliases":["タコ"],"groups":["イカ・タコ","堤防"],"noFishBase":true},
- {"id":"mizudako","name":"ミズダコ","groups":["イカ・タコ","北の魚"],"noFishBase":true},
- {"id":"aoriika","name":"アオリイカ","groups":["イカ・タコ","エギング"],"noFishBase":true},
- {"id":"yariika","name":"ヤリイカ","aliases":["ヤリ","テナシ"],"groups":["イカ・タコ"],"noFishBase":true},
- {"id":"surumeika","name":"スルメイカ","aliases":["マイカ","イカ"],"groups":["イカ・タコ"],"noFishBase":true},
- {"id":"hiika","name":"ジンドウイカ","aliases":["ヒイカ","コイカ"],"groups":["イカ・タコ"],"noFishBase":true},
- {"id":"kouika","name":"コウイカ","aliases":["スミイカ"],"groups":["イカ・タコ"],"noFishBase":true},
- {"id":"kensakiika","name":"ケンサキイカ","aliases":["マルイカ","シロイカ"],"groups":["イカ・タコ"],"noFishBase":true},
- {"id":"ainame_hokke_kin","name":"キンキ","wikipedia":"キチジ","aliases":["キチジ","メンメ"],"groups":["北の魚","船","深場"]},
- {"id":"ginpo","name":"ギンポ","groups":["堤防","小物"]},
- {"id":"donko","name":"エゾアイナメ","aliases":["ドンコ"],"groups":["北の魚","外道"]},
- {"id":"hatahata","name":"ハタハタ","groups":["北の魚","投げ"]},
- {"id":"ikanago","name":"イカナゴ","aliases":["コウナゴ"],"groups":["小物"]},
- {"id":"mebaru_tog","name":"トゴットメバル","groups":["船","根魚"]},
- {"id":"yanaginomai","name":"ヤナギノマイ","groups":["北の魚","船","根魚"]},
- {"id":"menuke","name":"バラメヌケ","aliases":["メヌケ"],"groups":["北の魚","船","深場"]},
- {"id":"oohyou","name":"オヒョウ","groups":["北の魚","船","カレイ"]},
- {"id":"karei_ishi_hokkai","name":"ヌマガレイ","aliases":["カワガレイ"],"groups":["カレイ","汽水","北の魚"]},
- {"id":"hiramehokkai","name":"アブラガレイ","groups":["カレイ","船","北の魚"]},
- {"id":"kurosoi_gold","name":"タヌキメバル","groups":["根魚","北の魚"]},
- {"id":"sabahokke","name":"キタノホッケ","aliases":["シマホッケ"],"groups":["北の魚"]},
- {"id":"hokkai_ebi","name":"ホッカイエビ","aliases":["北海シマエビ"],"groups":["北の魚","小物"],"noFishBase":true},
- {"id":"sanma","name":"サンマ","groups":["回遊魚"]},
- {"id":"kurosoi2","name":"ゴマソイ","groups":["根魚","北の魚"]},
- {"id":"ezoiwana","name":"オショロコマ","groups":["渓流","北の魚"]},
- {"id":"hime","name":"ヒメマス","groups":["淡水","北の魚","サケマス"]},
- {"id":"benizake","name":"ベニザケ","groups":["北の魚","サケマス"]},
- {"id":"masunosuke","name":"マスノスケ","aliases":["キングサーモン"],"groups":["北の魚","サケマス"]},
- {"id":"ginzake","name":"ギンザケ","groups":["北の魚","サケマス"]},
- {"id":"kokanee_tt","name":"カワマス","aliases":["ブルックトラウト"],"groups":["渓流","淡水"]},
- {"id":"kajika_kawa","name":"カジカ (魚)","wikipedia":"カジカ (魚)","aliases":["カワカジカ","ゴリ"],"groups":["淡水","渓流"]},
- {"id":"hasu","name":"ハス","groups":["淡水"]},
- {"id":"nigoi","name":"ニゴイ","groups":["淡水","外道"]},
- {"id":"tanago","name":"タナゴ","groups":["淡水","小物"]},
- {"id":"moroko","name":"モツゴ","aliases":["クチボソ"],"groups":["淡水","小物"]},
- {"id":"kawamutsu","name":"カワムツ","groups":["淡水","小物"]},
- {"id":"dojou","name":"ドジョウ","groups":["淡水","小物"]},
- {"id":"soygyo","name":"ソウギョ","groups":["淡水"]},
- {"id":"hakuren","name":"ハクレン","groups":["淡水"]},
- {"id":"amerikanamazu","name":"チャネルキャットフィッシュ","aliases":["アメリカナマズ"],"groups":["淡水"]},
- {"id":"kibire_mejina","name":"イスズミ","groups":["磯","外道"]},
- {"id":"buda","name":"アオブダイ","groups":["磯","危険"]},
- {"id":"hamafuefuki","name":"ハマフエフキ","aliases":["タマン"],"groups":["磯","南の魚"]},
- {"id":"gara","name":"スジアラ","aliases":["アカジン"],"groups":["ハタ","南の魚"]},
- {"id":"oniokoze","name":"オニオコゼ","groups":["危険","船"]},
- {"id":"akaei","name":"アカエイ","groups":["危険","外道"]},
- {"id":"hoshizame","name":"ホシザメ","groups":["外道"]},
- {"id":"aburatsunozame","name":"アブラツノザメ","groups":["北の魚","外道"]}
+ {
+"id": "ainame",
+"name": "アイナメ",
+"aliases": [
+"アブラコ",
+"アブラメ"
+],
+"groups": [
+"根魚"
+]
+},
+ {
+"id": "kujime",
+"name": "クジメ",
+"groups": [
+"根魚"
+]
+},
+ {
+"id": "hokke",
+"name": "ホッケ",
+"groups": [
+"根魚",
+"北の魚"
+]
+},
+ {
+"id": "kurosoi",
+"name": "クロソイ",
+"aliases": [
+"ソイ"
+],
+"groups": [
+"根魚"
+]
+},
+ {
+"id": "mazoi",
+"name": "キツネメバル",
+"aliases": [
+"マゾイ"
+],
+"groups": [
+"根魚"
+]
+},
+ {
+"id": "shimazoi",
+"name": "シマゾイ",
+"groups": [
+"根魚",
+"北の魚"
+]
+},
+ {
+"id": "ezomebaru",
+"name": "エゾメバル",
+"aliases": [
+"ガヤ"
+],
+"groups": [
+"根魚",
+"北の魚"
+]
+},
+ {
+"id": "murasoi",
+"name": "ムラソイ",
+"aliases": [
+"ハチガラ"
+],
+"groups": [
+"根魚"
+]
+},
+ {
+"id": "ougonmurasoi",
+"name": "オウゴンムラソイ",
+"aliases": [
+"ハチガラ"
+],
+"groups": [
+"根魚"
+]
+},
+ {
+"id": "takanohadai",
+"name": "タカノハダイ",
+"groups": [
+"根魚"
+]
+},
+ {
+"id": "mebaru_aka",
+"name": "アカメバル",
+"aliases": [
+"メバル"
+],
+"groups": [
+"根魚"
+]
+},
+ {
+"id": "mebaru_kuro",
+"name": "クロメバル",
+"aliases": [
+"メバル"
+],
+"groups": [
+"根魚"
+]
+},
+ {
+"id": "mebaru_shiro",
+"name": "シロメバル",
+"aliases": [
+"メバル"
+],
+"groups": [
+"根魚"
+]
+},
+ {
+"id": "usumebaru",
+"name": "ウスメバル",
+"aliases": [
+"沖メバル"
+],
+"groups": [
+"根魚",
+"船"
+]
+},
+ {
+"id": "kasago",
+"name": "カサゴ",
+"aliases": [
+"ガシラ",
+"アラカブ"
+],
+"groups": [
+"根魚"
+]
+},
+ {
+"id": "ukkarikasago",
+"name": "ウッカリカサゴ",
+"groups": [
+"根魚",
+"船"
+]
+},
+ {
+"id": "onikasago",
+"name": "オニカサゴ",
+"aliases": [
+"イズカサゴ"
+],
+"groups": [
+"根魚",
+"船"
+]
+},
+ {
+"id": "akahata",
+"name": "アカハタ",
+"groups": [
+"根魚",
+"ハタ"
+]
+},
+ {
+"id": "kijihata",
+"name": "キジハタ",
+"aliases": [
+"アコウ"
+],
+"groups": [
+"根魚",
+"ハタ"
+]
+},
+ {
+"id": "oomonhata",
+"name": "オオモンハタ",
+"groups": [
+"根魚",
+"ハタ"
+]
+},
+ {
+"id": "mahata",
+"name": "マハタ",
+"groups": [
+"根魚",
+"ハタ",
+"船"
+]
+},
+ {
+"id": "kue",
+"name": "クエ",
+"aliases": [
+"アラ",
+"モロコ"
+],
+"groups": [
+"根魚",
+"ハタ",
+"船"
+]
+},
+ {
+"id": "ara",
+"name": "アラ",
+"groups": [
+"根魚",
+"船"
+]
+},
+ {
+"id": "aoharata",
+"name": "アオハタ",
+"groups": [
+"根魚",
+"ハタ"
+]
+},
+ {
+"id": "houbou",
+"name": "ホウボウ",
+"groups": [
+"船",
+"底物"
+]
+},
+ {
+"id": "kanagashira",
+"name": "カナガシラ",
+"groups": [
+"船",
+"底物"
+]
+},
+ {
+"id": "magochi",
+"name": "マゴチ",
+"aliases": [
+"コチ"
+],
+"groups": [
+"フラット"
+]
+},
+ {
+"id": "hirame",
+"name": "ヒラメ",
+"groups": [
+"フラット"
+]
+},
+ {
+"id": "makogarei",
+"name": "マコガレイ",
+"groups": [
+"カレイ"
+]
+},
+ {
+"id": "kurogashiragarei",
+"name": "クロガシラガレイ",
+"groups": [
+"カレイ",
+"北の魚"
+]
+},
+ {
+"id": "ishigarei",
+"name": "イシガレイ",
+"groups": [
+"カレイ"
+]
+},
+ {
+"id": "magarei",
+"name": "マガレイ",
+"groups": [
+"カレイ",
+"北の魚"
+]
+},
+ {
+"id": "sunagarei",
+"name": "スナガレイ",
+"groups": [
+"カレイ",
+"北の魚"
+]
+},
+ {
+"id": "souhachi",
+"name": "ソウハチ",
+"groups": [
+"カレイ",
+"北の魚"
+]
+},
+ {
+"id": "babagarei",
+"name": "ババガレイ",
+"aliases": [
+"ナメタガレイ"
+],
+"groups": [
+"カレイ",
+"北の魚"
+]
+},
+ {
+"id": "meitagarei",
+"name": "メイタガレイ",
+"groups": [
+"カレイ"
+]
+},
+ {
+"id": "hoshigarei",
+"name": "ホシガレイ",
+"groups": [
+"カレイ"
+]
+},
+ {
+"id": "matsukawa",
+"name": "マツカワ",
+"groups": [
+"カレイ",
+"北の魚"
+]
+},
+ {
+"id": "akagarei",
+"name": "アカガレイ",
+"groups": [
+"カレイ",
+"船"
+]
+},
+ {
+"id": "kajika_toge",
+"name": "トゲカジカ",
+"aliases": [
+"カジカ",
+"ナベコワシ"
+],
+"groups": [
+"根魚",
+"北の魚"
+]
+},
+ {
+"id": "kajika_gisu",
+"name": "ギスカジカ",
+"aliases": [
+"カジカ"
+],
+"groups": [
+"根魚",
+"北の魚"
+]
+},
+ {
+"id": "kajika_kema",
+"name": "ケムシカジカ",
+"aliases": [
+"トウベツカジカ"
+],
+"groups": [
+"根魚",
+"北の魚"
+]
+},
+ {
+"id": "komai",
+"name": "コマイ",
+"aliases": [
+"カンカイ"
+],
+"groups": [
+"北の魚"
+]
+},
+ {
+"id": "madara",
+"name": "マダラ",
+"aliases": [
+"タラ"
+],
+"groups": [
+"北の魚",
+"船"
+]
+},
+ {
+"id": "suketoudara",
+"name": "スケトウダラ",
+"groups": [
+"北の魚",
+"船"
+]
+},
+ {
+"id": "nishin",
+"name": "ニシン",
+"groups": [
+"北の魚",
+"回遊魚"
+]
+},
+ {
+"id": "chika",
+"name": "チカ",
+"groups": [
+"北の魚",
+"小物"
+]
+},
+ {
+"id": "wakasagi",
+"name": "ワカサギ",
+"groups": [
+"淡水",
+"小物",
+"北の魚"
+]
+},
+ {
+"id": "kyuuriuo",
+"name": "キュウリウオ",
+"groups": [
+"北の魚",
+"小物"
+]
+},
+ {
+"id": "shishamo",
+"name": "シシャモ",
+"groups": [
+"北の魚"
+]
+},
+ {
+"id": "sake",
+"name": "サケ",
+"aliases": [
+"シロザケ",
+"アキアジ"
+],
+"groups": [
+"北の魚",
+"サケマス"
+]
+},
+ {
+"id": "karafutomasu",
+"name": "カラフトマス",
+"groups": [
+"北の魚",
+"サケマス"
+]
+},
+ {
+"id": "sakuramasu",
+"name": "サクラマス",
+"aliases": [
+"ヤマメ"
+],
+"groups": [
+"サケマス",
+"渓流"
+]
+},
+ {
+"id": "yamame",
+"name": "ヤマメ",
+"groups": [
+"渓流",
+"淡水"
+]
+},
+ {
+"id": "amago",
+"name": "アマゴ",
+"groups": [
+"渓流",
+"淡水"
+]
+},
+ {
+"id": "iwana",
+"name": "イワナ",
+"groups": [
+"渓流",
+"淡水"
+]
+},
+ {
+"id": "amemasu",
+"name": "アメマス",
+"aliases": [
+"エゾイワナ"
+],
+"groups": [
+"渓流",
+"北の魚"
+]
+},
+ {
+"id": "nijimasu",
+"name": "ニジマス",
+"aliases": [
+"レインボートラウト"
+],
+"groups": [
+"渓流",
+"淡水",
+"管理釣り場"
+]
+},
+ {
+"id": "brown",
+"name": "ブラウントラウト",
+"groups": [
+"渓流",
+"淡水"
+]
+},
+ {
+"id": "itou",
+"name": "イトウ",
+"groups": [
+"北の魚",
+"淡水",
+"渓流"
+]
+},
+ {
+"id": "ayu",
+"name": "アユ",
+"groups": [
+"淡水"
+]
+},
+ {
+"id": "ugui",
+"name": "ウグイ",
+"aliases": [
+"ハヤ"
+],
+"groups": [
+"淡水",
+"外道"
+]
+},
+ {
+"id": "oikawa",
+"name": "オイカワ",
+"groups": [
+"淡水",
+"小物"
+]
+},
+ {
+"id": "koi",
+"name": "コイ",
+"groups": [
+"淡水"
+]
+},
+ {
+"id": "funa",
+"name": "ギンブナ",
+"aliases": [
+"フナ",
+"マブナ"
+],
+"groups": [
+"淡水"
+]
+},
+ {
+"id": "herabuna",
+"name": "ゲンゴロウブナ",
+"aliases": [
+"ヘラブナ"
+],
+"groups": [
+"淡水"
+]
+},
+ {
+"id": "largemouth",
+"name": "オオクチバス",
+"aliases": [
+"ブラックバス",
+"ラージマウスバス"
+],
+"groups": [
+"淡水",
+"バス"
+]
+},
+ {
+"id": "smallmouth",
+"name": "コクチバス",
+"aliases": [
+"スモールマウスバス"
+],
+"groups": [
+"淡水",
+"バス"
+]
+},
+ {
+"id": "bluegill",
+"name": "ブルーギル",
+"groups": [
+"淡水"
+]
+},
+ {
+"id": "namazu",
+"name": "ナマズ",
+"groups": [
+"淡水"
+]
+},
+ {
+"id": "raigyo",
+"name": "カムルチー",
+"aliases": [
+"ライギョ",
+"雷魚"
+],
+"groups": [
+"淡水"
+]
+},
+ {
+"id": "unagi",
+"name": "ニホンウナギ",
+"aliases": [
+"ウナギ"
+],
+"groups": [
+"淡水",
+"汽水"
+]
+},
+ {
+"id": "tenagaebi",
+"name": "テナガエビ",
+"groups": [
+"淡水",
+"汽水",
+"小物"
+],
+"noFishBase": true
+},
+ {
+"id": "mahaze",
+"name": "マハゼ",
+"aliases": [
+"ハゼ"
+],
+"groups": [
+"汽水",
+"小物"
+]
+},
+ {
+"id": "urohaze",
+"name": "ウロハゼ",
+"groups": [
+"汽水",
+"小物"
+]
+},
+ {
+"id": "shirogisu",
+"name": "シロギス",
+"aliases": [
+"キス"
+],
+"groups": [
+"投げ",
+"砂浜"
+]
+},
+ {
+"id": "megochi",
+"name": "ネズミゴチ",
+"aliases": [
+"メゴチ"
+],
+"groups": [
+"投げ",
+"砂浜",
+"外道"
+]
+},
+ {
+"id": "ishimochi",
+"name": "シログチ",
+"aliases": [
+"イシモチ",
+"グチ"
+],
+"groups": [
+"投げ",
+"船"
+]
+},
+ {
+"id": "suzuki",
+"name": "スズキ",
+"aliases": [
+"シーバス",
+"セイゴ",
+"フッコ"
+],
+"groups": [
+"ルアー",
+"汽水"
+]
+},
+ {
+"id": "hirasuzuki",
+"name": "ヒラスズキ",
+"groups": [
+"ルアー",
+"磯"
+]
+},
+ {
+"id": "madai",
+"name": "マダイ",
+"aliases": [
+"タイ"
+],
+"groups": [
+"タイ",
+"船"
+]
+},
+ {
+"id": "chidai",
+"name": "チダイ",
+"aliases": [
+"ハナダイ"
+],
+"groups": [
+"タイ",
+"船"
+]
+},
+ {
+"id": "kidai",
+"name": "キダイ",
+"aliases": [
+"レンコダイ"
+],
+"groups": [
+"タイ",
+"船"
+]
+},
+ {
+"id": "kurodai",
+"name": "クロダイ",
+"aliases": [
+"チヌ"
+],
+"groups": [
+"タイ",
+"堤防"
+]
+},
+ {
+"id": "kichinu",
+"name": "キチヌ",
+"aliases": [
+"キビレ"
+],
+"groups": [
+"タイ",
+"汽水"
+]
+},
+ {
+"id": "hedai",
+"name": "ヘダイ",
+"groups": [
+"タイ"
+]
+},
+ {
+"id": "mejina",
+"name": "メジナ",
+"aliases": [
+"グレ",
+"クロ"
+],
+"groups": [
+"磯"
+]
+},
+ {
+"id": "kuromejina",
+"name": "クロメジナ",
+"aliases": [
+"オナガグレ"
+],
+"groups": [
+"磯"
+]
+},
+ {
+"id": "isaki",
+"name": "イサキ",
+"groups": [
+"船",
+"磯"
+]
+},
+ {
+"id": "ishidai",
+"name": "イシダイ",
+"aliases": [
+"サンバソウ"
+],
+"groups": [
+"磯",
+"底物"
+]
+},
+ {
+"id": "ishigakidai",
+"name": "イシガキダイ",
+"groups": [
+"磯",
+"底物"
+]
+},
+ {
+"id": "kawahagi",
+"name": "カワハギ",
+"groups": [
+"堤防",
+"船"
+]
+},
+ {
+"id": "umazurahagi",
+"name": "ウマヅラハギ",
+"groups": [
+"堤防",
+"船"
+]
+},
+ {
+"id": "aigo",
+"name": "アイゴ",
+"aliases": [
+"バリ"
+],
+"groups": [
+"磯",
+"危険"
+]
+},
+ {
+"id": "umitanago",
+"name": "ウミタナゴ",
+"groups": [
+"堤防",
+"小物"
+]
+},
+ {
+"id": "aji",
+"name": "マアジ",
+"aliases": [
+"アジ"
+],
+"groups": [
+"回遊魚",
+"堤防",
+"サビキ"
+]
+},
+ {
+"id": "maruaji",
+"name": "マルアジ",
+"aliases": [
+"アオアジ"
+],
+"groups": [
+"回遊魚",
+"堤防"
+]
+},
+ {
+"id": "shimaaji",
+"name": "シマアジ",
+"groups": [
+"回遊魚",
+"船"
+]
+},
+ {
+"id": "kaiwari",
+"name": "カイワリ",
+"groups": [
+"船"
+]
+},
+ {
+"id": "gingameaji",
+"name": "ギンガメアジ",
+"aliases": [
+"メッキ"
+],
+"groups": [
+"ルアー",
+"回遊魚"
+]
+},
+ {
+"id": "rouninaji",
+"name": "ロウニンアジ",
+"aliases": [
+"GT"
+],
+"groups": [
+"ルアー",
+"回遊魚"
+]
+},
+ {
+"id": "masaba",
+"name": "マサバ",
+"aliases": [
+"サバ"
+],
+"groups": [
+"回遊魚",
+"堤防",
+"サビキ"
+]
+},
+ {
+"id": "gomasaba",
+"name": "ゴマサバ",
+"groups": [
+"回遊魚",
+"堤防"
+]
+},
+ {
+"id": "maiwashi",
+"name": "マイワシ",
+"aliases": [
+"イワシ"
+],
+"groups": [
+"回遊魚",
+"サビキ",
+"小物"
+]
+},
+ {
+"id": "katakuchi",
+"name": "カタクチイワシ",
+"groups": [
+"回遊魚",
+"サビキ",
+"小物"
+]
+},
+ {
+"id": "urume",
+"name": "ウルメイワシ",
+"groups": [
+"回遊魚",
+"サビキ",
+"小物"
+]
+},
+ {
+"id": "konoshiro",
+"name": "コノシロ",
+"aliases": [
+"コハダ"
+],
+"groups": [
+"堤防",
+"サビキ"
+]
+},
+ {
+"id": "sayori",
+"name": "サヨリ",
+"groups": [
+"堤防",
+"小物"
+]
+},
+ {
+"id": "bora",
+"name": "ボラ",
+"groups": [
+"汽水",
+"堤防",
+"外道"
+]
+},
+ {
+"id": "buri",
+"name": "ブリ",
+"aliases": [
+"イナダ",
+"ワラサ",
+"ハマチ",
+"フクラギ"
+],
+"groups": [
+"青物",
+"回遊魚"
+]
+},
+ {
+"id": "hiramasa",
+"name": "ヒラマサ",
+"groups": [
+"青物",
+"回遊魚"
+]
+},
+ {
+"id": "kanpachi",
+"name": "カンパチ",
+"aliases": [
+"ショゴ"
+],
+"groups": [
+"青物",
+"回遊魚"
+]
+},
+ {
+"id": "sawara",
+"name": "サワラ",
+"aliases": [
+"サゴシ"
+],
+"groups": [
+"青物",
+"回遊魚"
+]
+},
+ {
+"id": "tachiuo",
+"name": "タチウオ",
+"groups": [
+"回遊魚",
+"堤防",
+"船"
+]
+},
+ {
+"id": "soudagatsuo",
+"name": "マルソウダ",
+"aliases": [
+"ソウダガツオ"
+],
+"groups": [
+"青物",
+"回遊魚"
+]
+},
+ {
+"id": "hiragatsuo",
+"name": "ヒラソウダ",
+"groups": [
+"青物",
+"回遊魚"
+]
+},
+ {
+"id": "katsuo",
+"name": "カツオ",
+"groups": [
+"青物",
+"回遊魚",
+"船"
+]
+},
+ {
+"id": "kihada",
+"name": "キハダ",
+"aliases": [
+"キハダマグロ"
+],
+"groups": [
+"青物",
+"回遊魚",
+"船"
+]
+},
+ {
+"id": "kuromaguro",
+"name": "クロマグロ",
+"aliases": [
+"ホンマグロ"
+],
+"groups": [
+"青物",
+"回遊魚",
+"船"
+]
+},
+ {
+"id": "shiira",
+"name": "シイラ",
+"groups": [
+"回遊魚",
+"ルアー"
+]
+},
+ {
+"id": "kamasu",
+"name": "アカカマス",
+"aliases": [
+"カマス"
+],
+"groups": [
+"回遊魚",
+"堤防"
+]
+},
+ {
+"id": "yamatokamasu",
+"name": "ヤマトカマス",
+"groups": [
+"回遊魚",
+"堤防"
+]
+},
+ {
+"id": "tobiuo",
+"name": "トビウオ",
+"groups": [
+"回遊魚"
+]
+},
+ {
+"id": "maanago",
+"name": "マアナゴ",
+"aliases": [
+"アナゴ"
+],
+"groups": [
+"船",
+"堤防",
+"夜釣り"
+]
+},
+ {
+"id": "utsubo",
+"name": "ウツボ",
+"groups": [
+"磯",
+"外道"
+]
+},
+ {
+"id": "kyuusen",
+"name": "キュウセン",
+"aliases": [
+"ベラ"
+],
+"groups": [
+"堤防",
+"外道"
+]
+},
+ {
+"id": "sasanohabera",
+"name": "ササノハベラ",
+"aliases": [
+"ベラ"
+],
+"groups": [
+"堤防",
+"外道"
+]
+},
+ {
+"id": "nenbutsudai",
+"name": "ネンブツダイ",
+"groups": [
+"堤防",
+"外道",
+"小物"
+]
+},
+ {
+"id": "suzumedai",
+"name": "スズメダイ",
+"groups": [
+"堤防",
+"外道",
+"小物"
+]
+},
+ {
+"id": "gonzui",
+"name": "ゴンズイ",
+"groups": [
+"堤防",
+"危険"
+]
+},
+ {
+"id": "haokoze",
+"name": "ハオコゼ",
+"groups": [
+"堤防",
+"危険"
+]
+},
+ {
+"id": "minokasago",
+"name": "ミノカサゴ",
+"groups": [
+"危険"
+]
+},
+ {
+"id": "kusafugu",
+"name": "クサフグ",
+"groups": [
+"堤防",
+"外道",
+"フグ"
+]
+},
+ {
+"id": "shousaifugu",
+"name": "ショウサイフグ",
+"groups": [
+"船",
+"フグ"
+]
+},
+ {
+"id": "torafugu",
+"name": "トラフグ",
+"groups": [
+"船",
+"フグ"
+]
+},
+ {
+"id": "himeji",
+"name": "ヒメジ",
+"groups": [
+"投げ",
+"外道"
+]
+},
+ {
+"id": "akamutsu",
+"name": "アカムツ",
+"aliases": [
+"ノドグロ"
+],
+"groups": [
+"船",
+"深場"
+]
+},
+ {
+"id": "kuromutsu",
+"name": "クロムツ",
+"groups": [
+"船",
+"深場"
+]
+},
+ {
+"id": "mutsu",
+"name": "ムツ",
+"groups": [
+"船",
+"深場"
+]
+},
+ {
+"id": "kinmedai",
+"name": "キンメダイ",
+"groups": [
+"船",
+"深場"
+]
+},
+ {
+"id": "akaamadai",
+"name": "アカアマダイ",
+"aliases": [
+"アマダイ",
+"グジ"
+],
+"groups": [
+"船"
+]
+},
+ {
+"id": "itoyoridai",
+"name": "イトヨリダイ",
+"groups": [
+"船"
+]
+},
+ {
+"id": "korodai",
+"name": "コロダイ",
+"groups": [
+"磯"
+]
+},
+ {
+"id": "koshoudai",
+"name": "コショウダイ",
+"groups": [
+"磯"
+]
+},
+ {
+"id": "madako",
+"name": "マダコ",
+"aliases": [
+"タコ"
+],
+"groups": [
+"イカ・タコ",
+"堤防"
+],
+"noFishBase": true
+},
+ {
+"id": "mizudako",
+"name": "ミズダコ",
+"groups": [
+"イカ・タコ",
+"北の魚"
+],
+"noFishBase": true
+},
+ {
+"id": "aoriika",
+"name": "アオリイカ",
+"groups": [
+"イカ・タコ",
+"エギング"
+],
+"noFishBase": true
+},
+ {
+"id": "yariika",
+"name": "ヤリイカ",
+"aliases": [
+"ヤリ",
+"テナシ"
+],
+"groups": [
+"イカ・タコ"
+],
+"noFishBase": true
+},
+ {
+"id": "surumeika",
+"name": "スルメイカ",
+"aliases": [
+"マイカ",
+"イカ"
+],
+"groups": [
+"イカ・タコ"
+],
+"noFishBase": true
+},
+ {
+"id": "hiika",
+"name": "ジンドウイカ",
+"aliases": [
+"ヒイカ",
+"コイカ"
+],
+"groups": [
+"イカ・タコ"
+],
+"noFishBase": true
+},
+ {
+"id": "kouika",
+"name": "コウイカ",
+"aliases": [
+"スミイカ"
+],
+"groups": [
+"イカ・タコ"
+],
+"noFishBase": true
+},
+ {
+"id": "kensakiika",
+"name": "ケンサキイカ",
+"aliases": [
+"マルイカ",
+"シロイカ"
+],
+"groups": [
+"イカ・タコ"
+],
+"noFishBase": true
+},
+ {
+"id": "ainame_hokke_kin",
+"name": "キンキ",
+"wikipedia": "キチジ",
+"aliases": [
+"キチジ",
+"メンメ"
+],
+"groups": [
+"北の魚",
+"船",
+"深場"
+]
+},
+ {
+"id": "ginpo",
+"name": "ギンポ",
+"groups": [
+"堤防",
+"小物"
+]
+},
+ {
+"id": "donko",
+"name": "エゾアイナメ",
+"aliases": [
+"ドンコ"
+],
+"groups": [
+"北の魚",
+"外道"
+]
+},
+ {
+"id": "hatahata",
+"name": "ハタハタ",
+"groups": [
+"北の魚",
+"投げ"
+]
+},
+ {
+"id": "ikanago",
+"name": "イカナゴ",
+"aliases": [
+"コウナゴ"
+],
+"groups": [
+"小物"
+]
+},
+ {
+"id": "mebaru_tog",
+"name": "トゴットメバル",
+"groups": [
+"船",
+"根魚"
+]
+},
+ {
+"id": "yanaginomai",
+"name": "ヤナギノマイ",
+"groups": [
+"北の魚",
+"船",
+"根魚"
+]
+},
+ {
+"id": "menuke",
+"name": "バラメヌケ",
+"aliases": [
+"メヌケ"
+],
+"groups": [
+"北の魚",
+"船",
+"深場"
+]
+},
+ {
+"id": "oohyou",
+"name": "オヒョウ",
+"groups": [
+"北の魚",
+"船",
+"カレイ"
+]
+},
+ {
+"id": "karei_ishi_hokkai",
+"name": "ヌマガレイ",
+"aliases": [
+"カワガレイ"
+],
+"groups": [
+"カレイ",
+"汽水",
+"北の魚"
+]
+},
+ {
+"id": "hiramehokkai",
+"name": "アブラガレイ",
+"groups": [
+"カレイ",
+"船",
+"北の魚"
+]
+},
+ {
+"id": "kurosoi_gold",
+"name": "タヌキメバル",
+"groups": [
+"根魚",
+"北の魚"
+]
+},
+ {
+"id": "sabahokke",
+"name": "キタノホッケ",
+"aliases": [
+"シマホッケ"
+],
+"groups": [
+"北の魚"
+]
+},
+ {
+"id": "hokkai_ebi",
+"name": "ホッカイエビ",
+"aliases": [
+"北海シマエビ"
+],
+"groups": [
+"北の魚",
+"小物"
+],
+"noFishBase": true
+},
+ {
+"id": "sanma",
+"name": "サンマ",
+"groups": [
+"回遊魚"
+]
+},
+ {
+"id": "kurosoi2",
+"name": "ゴマソイ",
+"groups": [
+"根魚",
+"北の魚"
+]
+},
+ {
+"id": "ezoiwana",
+"name": "オショロコマ",
+"groups": [
+"渓流",
+"北の魚"
+]
+},
+ {
+"id": "hime",
+"name": "ヒメマス",
+"groups": [
+"淡水",
+"北の魚",
+"サケマス"
+]
+},
+ {
+"id": "benizake",
+"name": "ベニザケ",
+"groups": [
+"北の魚",
+"サケマス"
+]
+},
+ {
+"id": "masunosuke",
+"name": "マスノスケ",
+"aliases": [
+"キングサーモン"
+],
+"groups": [
+"北の魚",
+"サケマス"
+]
+},
+ {
+"id": "ginzake",
+"name": "ギンザケ",
+"groups": [
+"北の魚",
+"サケマス"
+]
+},
+ {
+"id": "kokanee_tt",
+"name": "カワマス",
+"aliases": [
+"ブルックトラウト"
+],
+"groups": [
+"渓流",
+"淡水"
+]
+},
+ {
+"id": "kajika_kawa",
+"name": "カジカ",
+"wikipedia": "カジカ (魚)",
+"aliases": [
+"カワカジカ",
+"ゴリ"
+],
+"groups": [
+"淡水",
+"渓流"
+]
+},
+ {
+"id": "hasu",
+"name": "ハス",
+"groups": [
+"淡水"
+]
+},
+ {
+"id": "nigoi",
+"name": "ニゴイ",
+"groups": [
+"淡水",
+"外道"
+]
+},
+ {
+"id": "tanago",
+"name": "タナゴ",
+"groups": [
+"淡水",
+"小物"
+]
+},
+ {
+"id": "moroko",
+"name": "モツゴ",
+"aliases": [
+"クチボソ"
+],
+"groups": [
+"淡水",
+"小物"
+]
+},
+ {
+"id": "kawamutsu",
+"name": "カワムツ",
+"groups": [
+"淡水",
+"小物"
+]
+},
+ {
+"id": "dojou",
+"name": "ドジョウ",
+"groups": [
+"淡水",
+"小物"
+]
+},
+ {
+"id": "soygyo",
+"name": "ソウギョ",
+"groups": [
+"淡水"
+]
+},
+ {
+"id": "hakuren",
+"name": "ハクレン",
+"groups": [
+"淡水"
+]
+},
+ {
+"id": "amerikanamazu",
+"name": "チャネルキャットフィッシュ",
+"aliases": [
+"アメリカナマズ"
+],
+"groups": [
+"淡水"
+]
+},
+ {
+"id": "kibire_mejina",
+"name": "イスズミ",
+"groups": [
+"磯",
+"外道"
+]
+},
+ {
+"id": "buda",
+"name": "アオブダイ",
+"groups": [
+"磯",
+"危険"
+]
+},
+ {
+"id": "hamafuefuki",
+"name": "ハマフエフキ",
+"aliases": [
+"タマン"
+],
+"groups": [
+"磯",
+"南の魚"
+]
+},
+ {
+"id": "gara",
+"name": "スジアラ",
+"aliases": [
+"アカジン"
+],
+"groups": [
+"ハタ",
+"南の魚"
+]
+},
+ {
+"id": "oniokoze",
+"name": "オニオコゼ",
+"groups": [
+"危険",
+"船"
+]
+},
+ {
+"id": "akaei",
+"name": "アカエイ",
+"groups": [
+"危険",
+"外道"
+]
+},
+ {
+"id": "hoshizame",
+"name": "ホシザメ",
+"groups": [
+"外道"
+]
+},
+ {
+"id": "aburatsunozame",
+"name": "アブラツノザメ",
+"groups": [
+"北の魚",
+"外道"
+]
+}
 ]

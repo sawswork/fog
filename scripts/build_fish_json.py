@@ -112,8 +112,13 @@ for c in curated:
         e["image"] = c["id"] + ".jpg"; e["imageCredit"] = cr; e["sources"].append({"name": "Wikimedia Commons（画像）", "url": cr.get("url")})
     entries.append({k: v for k, v in e.items() if v not in (None, "", [], {})})
 
-# 並び：和名のある種 → 釣りの分類がある種 → 科
-entries.sort(key=lambda e: (0 if e.get("groups") else 1, 0 if e.get("name") != e.get("scientificName") else 1, e.get("familySci") or "", e.get("name")))
+# 並び：釣りの分類がある種（五十音）→ 和名のある種（五十音）→ 推定和名 → 学名だけ
+def rank(e):
+    if e.get("groups"): return 0
+    if e.get("name") != e.get("scientificName") and not e.get("nameEstimated"): return 1
+    if e.get("nameEstimated"): return 2
+    return 3
+entries.sort(key=lambda e: (rank(e), e.get("name")))
 json.dump({"generatedAt": time.strftime("%Y-%m-%d"), "entries": entries}, open(a.out, "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
 named = sum(1 for e in entries if e.get("name") != e.get("scientificName") and not e.get("nameEstimated")); est = sum(1 for e in entries if e.get("nameEstimated")); imgs = sum(1 for e in entries if e.get("image")); fbn = sum(1 for e in entries if e.get("maxLengthCm")); wk = sum(1 for e in entries if e.get("summary"))
 print(f"fish.json: {len(entries)} 種、和名 {named}（推定 {est}）、FishBase {fbn}、Wikipedia {wk}、画像 {imgs}、{os.path.getsize(a.out)//1024} KB")
