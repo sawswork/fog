@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 import CoreImage
 import CoreImage.CIFilterBuiltins
+import Core
 
 /// テーマ（F-49 / F-58）。`dark` が従来の標準。画像テーマは `App/Resources/Themes/<folder>/` の画像を使い、無ければ色だけで成立する。
 ///
