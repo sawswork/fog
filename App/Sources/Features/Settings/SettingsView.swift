@@ -13,10 +13,11 @@ struct SettingsView: View {
         NavigationStack {
             List {
                 row("タックル", system: "wrench.and.screwdriver", trailing: "\(tackleCount)・\(rigCount)") { TackleSettingsView() }
+                row("釣り人", system: "person.2", trailing: AnglerSettings.ownName + (AnglerSettings.members.isEmpty ? "" : " +\(AnglerSettings.members.count)")) { AnglerSettingsView() }
                 row("データ", system: "icloud", trailing: cloudLabel) { DataSettingsView() }
                 row("通知", system: "bell", trailing: notifyLabel) { NotificationSettingsView() }
                 row("判定", system: "fish", trailing: CoreMLSpeciesClassifier.modelVersion) { JudgementSettingsView() }
-                row("自動検出", system: "location", trailing: SessionDetectionService.sensitivity.label) { DetectionSettingsView() }
+                row("自動検出", system: "location", trailing: SessionDetectionService.autoDetectionEnabled ? SessionDetectionService.sensitivity.label : "オフ") { DetectionSettingsView() }
                 row("地図レイヤー", system: "square.3.layers.3d", trailing: "\(MapLayerSettings.enabled.count)/\(MapLayer.allCases.count)") { MapLayerSettingsView() }
                 row("情報源", system: "info.circle", trailing: "") { SourcesSettingsView() }
                 row("テーマ", system: "paintpalette", trailing: ThemeStore.shared.theme.label) { ThemeSettingsView() }
@@ -562,32 +563,52 @@ struct JudgementSettingsView: View {
 struct DetectionSettingsView: View {
     @Environment(AppServices.self) private var services
     @State private var sensitivity: DetectionSettings.Sensitivity = SessionDetectionService.sensitivity
+    @State private var autoEnabled: Bool = SessionDetectionService.autoDetectionEnabled
 
     var body: some View {
         SettingsPage(title: "自動検出") {
             List {
-                Picker("感度", selection: $sensitivity) {
-                    ForEach(DetectionSettings.Sensitivity.allCases, id: \.self) { Text($0.label).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .settingsRow()
-                .onChange(of: sensitivity) { _, s in services.detection.applySensitivity(s) }
+                Section {
+                    Toggle(isOn: $autoEnabled) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("位置情報で自動開始・終了").font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
+                            Text(autoEnabled ? "常に位置を監視します（電池を使います）" : "オフ：釣行はホームの「開始」「終了」か撮影で記録します。位置は記録中と地図・撮影を開いている間だけ使います")
+                                .font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
+                        }
+                    }
+                    .tint(DS.Color.accent)
+                    .settingsRow()
+                    .onChange(of: autoEnabled) { _, on in services.detection.applyAutoDetection(on) }
+                    Text("忘れて終え損ねた釣行は、最後の動き（開始・釣果・針）から 8 時間たつと自動で終わります")
+                        .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary).settingsRow()
+                } header: { SectionLabel(text: "釣行の記録") }
 
-                let s = DetectionSettings.forSensitivity(sensitivity)
-                detailRow("開始", "同じ場所に \(Int(s.dwellToStart / 60)) 分とどまる")
-                detailRow("終了", "\(Int(s.awayDistanceM)) m 離れて \(Int(s.awayToEnd / 60)) 分、または車で \(Int(s.drivingToEnd / 60)) 分")
-                detailRow("ランガン", "\(Int(s.runAndGunMaxGap / 60)) 分・\(Int(s.runAndGunMaxDistanceM / 1000)) km 以内は同じ釣行")
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("除外した場所").font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
-                        Text("破棄・削除した釣行の場所から 400 m 以内では自動で始めない：\(excludedCount) 件").font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
-                    }
-                    Spacer()
-                    if excludedCount > 0 {
-                        Button("消去") { SessionDetectionService.clearExclusions(); excludedCount = 0 }.font(DS.Font.caption).foregroundStyle(DS.Color.accent)
-                    }
+                if autoEnabled {
+                    Section {
+                        Picker("感度", selection: $sensitivity) {
+                            ForEach(DetectionSettings.Sensitivity.allCases, id: \.self) { Text($0.label).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        .settingsRow()
+                        .onChange(of: sensitivity) { _, s in services.detection.applySensitivity(s) }
+
+                        let s = DetectionSettings.forSensitivity(sensitivity)
+                        detailRow("開始", "同じ場所に \(Int(s.dwellToStart / 60)) 分とどまる")
+                        detailRow("終了", "\(Int(s.awayDistanceM)) m 離れて \(Int(s.awayToEnd / 60)) 分、または車で \(Int(s.drivingToEnd / 60)) 分")
+                        detailRow("ランガン", "\(Int(s.runAndGunMaxGap / 60)) 分・\(Int(s.runAndGunMaxDistanceM / 1000)) km 以内は同じ釣行")
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("除外した場所").font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
+                                Text("破棄・削除した釣行の場所から 400 m 以内では自動で始めない：\(excludedCount) 件").font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
+                            }
+                            Spacer()
+                            if excludedCount > 0 {
+                                Button("消去") { SessionDetectionService.clearExclusions(); excludedCount = 0 }.font(DS.Font.caption).foregroundStyle(DS.Color.accent)
+                            }
+                        }
+                        .settingsRow()
+                    } header: { SectionLabel(text: "自動検出の感度") }
                 }
-                .settingsRow()
             }
             .listStyle(.plain)
         }
@@ -602,6 +623,82 @@ struct DetectionSettingsView: View {
             Text(text).font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
         }
         .settingsRow()
+    }
+}
+
+// MARK: - 釣り人（F-54）
+
+struct AnglerSettingsView: View {
+    @Environment(AppServices.self) private var services
+    @State private var ownName = AnglerSettings.ownName
+    @State private var members = AnglerSettings.members
+    @State private var newMember = ""
+    @State private var sharing = PartyService.isEnabled
+    @State private var syncing = false
+
+    var body: some View {
+        SettingsPage(title: "釣り人") {
+            List {
+                Section {
+                    HStack {
+                        Text("自分").font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
+                        Spacer()
+                        TextField("名前", text: $ownName).multilineTextAlignment(.trailing).font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
+                            .onSubmit { AnglerSettings.ownName = ownName; ownName = AnglerSettings.ownName }
+                    }
+                    .settingsRow()
+                    ForEach(members, id: \.self) { m in
+                        Text(m).font(DS.Font.label).foregroundStyle(DS.Color.textPrimary).settingsRow()
+                    }
+                    .onDelete { idx in idx.map { members[$0] }.forEach { AnglerSettings.remove(member: $0) }; members = AnglerSettings.members }
+                    HStack {
+                        TextField("いっしょに釣る人の名前", text: $newMember).font(DS.Font.label)
+                        Button("追加") { AnglerSettings.add(member: newMember); members = AnglerSettings.members; newMember = "" }
+                            .font(DS.Font.label).foregroundStyle(DS.Color.accent)
+                            .disabled(newMember.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                    .settingsRow()
+                    Text("撮影画面の上の名前をタップして、誰の魚かを選びます。他の人の魚は図鑑・自己記録・釣れ率の学習には入れず、釣行の尾数と共有にだけ入ります")
+                        .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary).settingsRow()
+                } header: { SectionLabel(text: "名前") }
+
+                Section {
+                    Toggle(isOn: $sharing) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("仲間と釣果を共有").font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
+                            Text("魚種・サイズ・時刻・場所・釣った人・サムネイルを iCloud（このアプリの公開データベース）に置き、相手の端末の「釣果情報」と地図に出ます。写真本体は送りません")
+                                .font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
+                        }
+                    }
+                    .tint(DS.Color.accent)
+                    .settingsRow()
+                    .onChange(of: sharing) { _, on in
+                        PartyService.isEnabled = on
+                        if on { Task { await services.party.syncIfNeeded(store: services.store, force: true) } }
+                    }
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("仲間の釣果 \(services.party.others.count) 件").font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
+                            Text(services.party.lastError ?? services.party.lastSyncAt.map { "最終同期 " + $0.formatted(.dateTime.month().day().hour().minute()) } ?? "まだ同期していません")
+                                .font(DS.Font.caption).foregroundStyle(services.party.lastError == nil ? DS.Color.textTertiary : DS.Color.holiday)
+                        }
+                        Spacer()
+                        Button {
+                            syncing = true
+                            Task { await services.party.syncIfNeeded(store: services.store, force: true); syncing = false }
+                        } label: { Image(systemName: "arrow.clockwise").font(.system(size: 14, weight: .semibold)).foregroundStyle(DS.Color.accent) }
+                        .buttonStyle(.plain)
+                        .disabled(syncing || !services.party.isAvailable)
+                    }
+                    .settingsRow()
+                    if !services.party.isAvailable, sharing {
+                        Text("iCloud のコンテナが設定されていないため共有できません").font(DS.Font.caption).foregroundStyle(DS.Color.holiday).settingsRow()
+                    }
+                } header: { SectionLabel(text: "共有（2 台の iPhone の間）") }
+            }
+            .listStyle(.plain)
+        }
+        .onDisappear { AnglerSettings.ownName = ownName }
     }
 }
 

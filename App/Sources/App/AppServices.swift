@@ -20,8 +20,14 @@ final class AppServices {
     let assistant = AssistantService()
     let inventory = InventoryStore()
     let gridForecast = GridForecastService()
+    /// 仲間との釣果共有（F-54）
+    let party = PartyService()
     let router = Router()
     var dataManager: DataManager { DataManager(store: store) }
+    /// 画面の状態はタブを切り替えても捨てない（タブに戻るたびに全部計算し直していたのが「重い」の一因。2026-11-09）
+    let homeModel = HomeViewModel()
+    let logModel = LogViewModel()
+    let spotsModel = SpotsViewModel()
 
     init() {
         let persistence = PersistenceController.live()
@@ -49,26 +55,44 @@ final class AppServices {
                 }
             }
         }
+        // 釣果の保存・削除を仲間へ（F-54）
+        let party = self.party
+        capture.onCatchSaved = { [weak store] item in
+            guard let store else { return }
+            Task { @MainActor in await party.upload(item, store: store) }
+        }
+        capture.onCatchDeleted = { id in Task { @MainActor in await party.delete(catchID: id) } }
     }
 
     var hookRecorder: HookEventRecorder { HookEventRecorder(store: store, detection: detection, scheduler: scheduler, capture: capture, inventory: inventory) }
 
-    /// 起動時：ダミーデータ、通知、自動検出。
+    /// 起動時：カタログ、保存データの補正、通知、釣行の引き継ぎ。
     func start() async {
         RouterHolder.shared.router = router
         CatalogSeeder.seedIfNeeded(store: store)
+        feeds.migrateRepositoryOwnerIfNeeded()
+        // 潮名の規則を直した分、過去の記録を揃える。直した釣行はレポートも作り直す（文中の潮名が変わるため）
+        let repaired = DataRepairs.run(store: store)
         await SessionNotifications.requestAuthorization()
         detection.start()
         drainPendingHookEvents()
         _ = await PhotoLibraryService.requestAuthorization()
+        if !repaired.isEmpty {
+            let report = self.report
+            Task { @MainActor in for id in repaired { _ = await report.attachReport(to: id) } }
+        }
+        let store = self.store, party = self.party
+        Task { @MainActor in await party.syncIfNeeded(store: store) }
     }
 
-    /// フォアグラウンド復帰：ウィジェットからの針ロストを取り込み、釣行中なら標準カメラの写真を取り込む（F-08）。
+    /// フォアグラウンド復帰：ウィジェットからの針ロストを取り込み、釣行中なら標準カメラの写真を取り込む（F-08）。仲間の釣果も取りに行く
     func didBecomeActive() async {
         drainPendingHookEvents()
+        detection.endStaleSessionIfNeeded()
         if let active = try? store.activeSession() {
             await photoImport.importPhotos(for: active.id)
         }
+        await party.syncIfNeeded(store: store)
     }
 
     /// ウィジェットの「針ロスト」はアプリを開かずに時刻だけ記録される。ここで釣行・位置を補って保存する（F-15）。

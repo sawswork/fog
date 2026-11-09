@@ -85,6 +85,8 @@ final class HomeViewModel {
     private var services: AppServices?
     /// 釣り場詳細に埋め込むとき：この釣り場に固定し、ウィジェット・通知の書き出しはしない（F-51）
     var fixedSpotID: UUID?
+    /// ストアに無い釣り場（未登録の漁港）に固定するとき。`fixedSpotID` と組で使う
+    var fixedSpot: Spot?
     var isEmbedded = false
     private let cache = AnalysisCache()
     private var timelineKey = ""
@@ -124,6 +126,8 @@ final class HomeViewModel {
     private var refreshingNetwork = false
     private var lastWidgetKey = ""
     private var lastWidgetPublishAt: Date = .distantPast
+    private var lastNotifyKey = ""
+    private var lastNotifyScheduleAt: Date = .distantPast
 
     /// 画面に要る日：表示中の日、その週（月〜日）、ウィジェットの今日〜明後日
     private func neededOffsets() -> [Int] {
@@ -214,7 +218,7 @@ final class HomeViewModel {
         } else if let last = sessions.first, let s = spots.first(where: { $0.id == last.spotID }) {
             spot = s
         }
-        if let fixedSpotID, let s = spots.first(where: { $0.id == fixedSpotID }) {
+        if let fixedSpotID, let s = spots.first(where: { $0.id == fixedSpotID }) ?? fixedSpot {
             spot = s
             isRecording = false
             liveSession = nil
@@ -222,9 +226,10 @@ final class HomeViewModel {
         let candidate = (fixedSpotID != nil ? spot?.coordinate : nil) ?? active?.track.last?.coordinate ?? spot?.coordinate ?? location ?? SampleData.hakodate
         coordinate = candidate.isPlausible ? candidate : (location ?? SampleData.hakodate)
 
-        // 自分データの重み（削除が即時反映されるよう revision で捨てる）
+        // 自分データの重み（削除が即時反映されるよう revision で捨てる）。他の人の魚（F-54）は学習に入れない
+        let ownSessions = (try? store.ownSessions()) ?? sessions
         let personal = cache.value("personalModel", store: store) {
-            PersonalModel.learn(from: sessions.filter { !$0.isActive }, coordinateOf: { s in spots.first { $0.id == s.spotID }?.coordinate }, timeZone: timeZone)
+            PersonalModel.learn(from: ownSessions.filter { !$0.isActive }, coordinateOf: { s in spots.first { $0.id == s.spotID }?.coordinate }, timeZone: timeZone)
         }
         let engine = ScoreEngine(personal: personal.total.hours >= 1 ? personal : nil)
         // 通信を待たずに手元のキャッシュで先に描く。取れたら（予報の時刻が変わったら）もう一度計算する
@@ -244,7 +249,7 @@ final class HomeViewModel {
         moonAge = current.moonAge ?? MoonCalculator.age(at: now)
 
         // 魚種別（自分が釣った魚種の上位 3）
-        let topSpecies = Analytics.speciesStats(sessions: sessions, timeZone: timeZone).prefix(3).map(\.species)
+        let topSpecies = Analytics.speciesStats(sessions: ownSessions, timeZone: timeZone).prefix(3).map(\.species)
         speciesScores = topSpecies.map { name in
             (species: name, score: engine.score(ScoreInput(at: now, coordinate: coordinate, env: current, species: name, timeZone: timeZone)).score)
         }
@@ -259,8 +264,9 @@ final class HomeViewModel {
         forecastHorizon = env.forecastHorizon(for: coordinate)
         let end = start.addingTimeInterval(32 * 86_400)
         let entry = env.cache.entry(for: coordinate)
+        // 立ち位置・気圧ログの追記（minor）では捨てない：分析に影響する変更の版だけを鍵にする
         let key = [String(format: "%.4f,%.4f", coordinate.latitude, coordinate.longitude), "\(entry?.weatherFetchedAt?.timeIntervalSince1970 ?? 0)",
-                   "\(entry?.marineFetchedAt?.timeIntervalSince1970 ?? 0)", "\(store.revision)", "\(start.timeIntervalSince1970)"].joined(separator: "|")
+                   "\(entry?.marineFetchedAt?.timeIntervalSince1970 ?? 0)", "\(store.analysisRevision)", "\(start.timeIntervalSince1970)"].joined(separator: "|")
         let station = env.tideStation(near: coordinate)
         let tide = station.map { TideEngine(station: $0) }
         let inputs = env.inputs(for: coordinate)
@@ -300,13 +306,17 @@ final class HomeViewModel {
             WidgetSync.publish(spotName: spot?.name ?? "現在地", timeline: timeline, tide: tide, events: widgetEvents, isRecording: isRecording, tackle: services.capture.currentTackle,
                                envAt: { env.weatherSnapshot(at: $0, coordinate: coordinate) })
         }
-        PeakNotifier.schedule(points: timeline, spot: spot, now: now, timeZone: timeZone)
-        // 明日のベストタイム（F-28）：明日 1 日分から
-        let tomorrow = dayData(1)
-        DailyBriefNotifier.schedule(points: tomorrow.timeline, extremes: tomorrow.extremes, spot: spot, coordinate: coordinate,
-                                    airTemperatureAt: { env.snapshot(at: $0, coordinate: coordinate).airTemperatureC }, now: now, timeZone: timeZone)
-        // 安全通知（F-36）：釣行中だけ予約し直す（帰る時間の設定変更を反映するため）
-        if isRecording { SafetyNotifier.schedule(at: now, coordinate: coordinate, environment: env, timeZone: timeZone) }
+        // 通知の予約もウィジェットと同じく 10 分に 1 回（30 秒ごとに予約し直していた）
+        if now.timeIntervalSince(lastNotifyScheduleAt) > 600 || widgetKey != lastNotifyKey {
+            lastNotifyScheduleAt = now; lastNotifyKey = widgetKey
+            PeakNotifier.schedule(points: timeline, spot: spot, now: now, timeZone: timeZone)
+            // 明日のベストタイム（F-28）：明日 1 日分から
+            let tomorrow = dayData(1)
+            DailyBriefNotifier.schedule(points: tomorrow.timeline, extremes: tomorrow.extremes, spot: spot, coordinate: coordinate,
+                                        airTemperatureAt: { env.weatherSnapshot(at: $0, coordinate: coordinate).airTemperatureC }, now: now, timeZone: timeZone)
+            // 安全通知（F-36）：釣行中だけ予約し直す（帰る時間の設定変更を反映するため）
+            if isRecording { SafetyNotifier.schedule(at: now, coordinate: coordinate, environment: env, timeZone: timeZone) }
+        }
         // 地図レイヤー（F-43）：使ったことがあれば、この釣り場の周りのタイルを先に用意しておく（開いたときに最初からある）
         if MapLayerSettings.usedOnce {
             services.gridForecast.ensure(minLat: coordinate.latitude - 0.1, maxLat: coordinate.latitude + 0.1,

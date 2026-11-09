@@ -43,11 +43,20 @@ struct SpotDetailView: View {
                                 .foregroundStyle(placingNote ? DS.Color.holiday : DS.Color.textPrimary)
                         }
                         .buttonStyle(.plain)
-                    Menu {
-                        Button("名前を変える") { newName = card.spot.name; renaming = true }
-                        Button("削除", role: .destructive) { confirmDelete = true }
-                    } label: {
-                        Image(systemName: "ellipsis.circle.fill").font(.system(size: 22)).foregroundStyle(DS.Color.textPrimary)
+                    if card.isCandidate {
+                        // 未登録の漁港でも詳細を見られる（2026-11-09）。登録はここから
+                        Button { services.spotsModel.register(card); dismiss() } label: {
+                            Label("登録", systemImage: "plus").font(DS.Font.caption).foregroundStyle(DS.Color.background)
+                                .padding(.horizontal, 10).padding(.vertical, 5).background(DS.Color.accent, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        Menu {
+                            Button("名前を変える") { newName = card.spot.name; renaming = true }
+                            Button("削除", role: .destructive) { confirmDelete = true }
+                        } label: {
+                            Image(systemName: "ellipsis.circle.fill").font(.system(size: 22)).foregroundStyle(DS.Color.textPrimary)
+                        }
                     }
                     }
                     .padding(DS.Spacing.l)
@@ -56,7 +65,7 @@ struct SpotDetailView: View {
                     HStack(alignment: .firstTextBaseline) {
                         Text(card.spot.name).font(DS.Font.number(22)).foregroundStyle(DS.Color.textPrimary)
                         Spacer()
-                        Text("\(card.stats.sessions)釣行 \(card.stats.catches)尾").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+                        Text(card.isCandidate ? "未登録の漁港" : "\(card.stats.sessions)釣行 \(card.stats.catches)尾").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
                     }
                     let dist = Analytics.conditionDistribution(of: sessions.flatMap(\.catches))
                     HStack(spacing: DS.Spacing.m) {
@@ -107,6 +116,7 @@ struct SpotDetailView: View {
             reload()
             reloadNotes()
             detailModel.fixedSpotID = card.spot.id
+            detailModel.fixedSpot = card.spot
             detailModel.isEmbedded = true
             detailModel.attach(services)
             Task { await detailModel.refresh() }

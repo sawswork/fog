@@ -55,7 +55,7 @@ final class SnapshotScheduler {
         if let last = log.last, date.timeIntervalSince(last.at) < Self.pressureInterval - 30 { return }
         log.append(PressureSample(at: date, pressureHPa: latest.pressureHPa))
         session.pressureLog = log
-        try? store.upsert(session)
+        try? store.upsert(session, minor: true)
     }
 
     enum Reason { case sessionStart, periodic, catchEvent }
@@ -68,7 +68,7 @@ final class SnapshotScheduler {
         guard var session = try? store.session(id: id) else { return nil }
         let snapshot = environment.snapshot(at: date, coordinate: coordinate)
         session.snapshots.append(snapshot)
-        try? store.upsert(session)
+        try? store.upsert(session, minor: true)
         lastSnapshotAt = date
         return snapshot
     }

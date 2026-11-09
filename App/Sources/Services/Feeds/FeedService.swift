@@ -42,6 +42,29 @@ final class FeedService {
         Task { await refreshIfNeeded(force: true) }
     }
 
+    /// リポジトリの所有者が knowlsaws → sawswork に変わった（2026-11-09）。登録済みの fog-feeds の URL を新しい所有者に書き換える
+    func migrateRepositoryOwnerIfNeeded() {
+        let old = "/knowlsaws/fog-feeds/", new = "/sawswork/fog-feeds/"
+        let oldPages = "knowlsaws.github.io/fog-feeds", newPages = "sawswork.github.io/fog-feeds"
+        let current = urls
+        let migrated = current.map { $0.replacingOccurrences(of: old, with: new).replacingOccurrences(of: oldPages, with: newPages) }
+        guard migrated != current else { return }
+        var seen = Set<String>()
+        urls = migrated.filter { seen.insert($0).inserted }
+        var f = filters
+        for (o, n) in zip(current, migrated) where o != n { if let v = f[o] { f[n] = v; f[o] = nil } }
+        filters = f
+        for (o, n) in zip(current, migrated) where o != n {
+            feedTitles[n] = feedTitles[o]; feedTitles[o] = nil
+            kinds[n] = kinds[o]; kinds[o] = nil
+            resolvedFeeds[n] = resolvedFeeds[o].map { $0.replacingOccurrences(of: old, with: new) }; resolvedFeeds[o] = nil
+            items = items.map { i in var i = i; if i.feedURL == o { i.feedURL = n }; return i }
+            gate.release(n)
+        }
+        save()
+        Task { await refreshIfNeeded(force: true) }
+    }
+
     func remove(url: String) {
         urls.removeAll { $0 == url }
         items.removeAll { $0.feedURL == url }

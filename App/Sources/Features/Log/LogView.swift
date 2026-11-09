@@ -5,7 +5,7 @@ import Core
 /// ログ（§4）。上半分が釣行、下半分が分析。どちらも横スクロールのカードで 1 画面に収める。
 struct LogView: View {
     @Environment(AppServices.self) private var services
-    @State private var model = LogViewModel()
+    private var model: LogViewModel { services.logModel }
     @State private var detail: Core.Session?
     @State private var analysis: AnalysisKind?
     @State private var reportSession: Core.Session?

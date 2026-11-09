@@ -26,6 +26,9 @@ enum FogStoreError: LocalizedError {
 @Observable
 final class FogStore {
     private(set) var revision: Int = 0
+    /// 分析に影響する変更（釣果・釣行の開始終了・釣り場・タックルなど）だけで進む版。
+    /// 立ち位置・気圧ログ・スナップショットの追記は `revision` だけ進める（30 秒ごとの再計算やキャッシュの捨て直しを起こさない。2026-11-09 処理速度）
+    private(set) var analysisRevision: Int = 0
     let context: ModelContext
 
     init(container: ModelContainer) {
@@ -108,8 +111,24 @@ final class FogStore {
         try fetchOne(SessionRecord.self, #Predicate { $0.endedAt == nil })?.core
     }
 
+    /// 自分の釣果だけにした釣行（他の人の魚を自分の端末で撮った分を除く。図鑑・自己記録・自分データの学習に使う。F-54）
+    @ObservationIgnored private var ownSessionsMemo: (revision: Int, own: String, value: [Core.Session])?
+    func ownSessions() throws -> [Core.Session] {
+        let own = AnglerSettings.ownName
+        if let m = ownSessionsMemo, m.revision == revision, m.own == own { return m.value }
+        let v = try sessions().map { s in
+            guard s.catches.contains(where: { !$0.isOwn(ownName: own) }) else { return s }
+            var copy = s
+            copy.catches = s.catches.filter { $0.isOwn(ownName: own) }
+            return copy
+        }
+        ownSessionsMemo = (revision, own, v)
+        return v
+    }
+
     /// 釣行を子レコード（釣果・スナップショット・針イベント）まで含めて保存する。渡されなかった子は消える。
-    func upsert(_ session: Core.Session) throws {
+    /// `minor` は立ち位置・気圧・スナップショットの追記のように分析に影響しない保存（画面への通知を出さない）
+    func upsert(_ session: Core.Session, minor: Bool = false) throws {
         guard let spot = try spotRecord(id: session.spotID) else { throw FogStoreError.missingSpot(session.spotID) }
         let record: SessionRecord
         if let existing = try sessionRecord(id: session.id) {
@@ -130,7 +149,7 @@ final class FogStore {
         sync(existing: record.hookEvents ?? [], with: session.hookEvents, recordID: \.uuid, id: \.id,
              make: { HookEventRecord(core: $0, session: record) },
              update: { $0.apply($1); $0.session = record })
-        try commit()
+        try commit(minor: minor)
     }
 
     func deleteSession(id: UUID) throws {
@@ -163,16 +182,25 @@ final class FogStore {
     func setThumbnail(catchID: UUID, jpeg: Data) throws {
         guard let record = try fetchOne(CatchRecord.self, #Predicate { $0.uuid == catchID }) else { return }
         record.thumbnailJPEG = jpeg
-        try commit()
+        thumbnailCache[catchID] = jpeg
+        // サムネイルは分析に影響しない。ただし画面（図鑑・ログのカード）は描き直す
+        try commit(minor: true, notify: true)
     }
 
+    /// 画面の body から何度も呼ばれるので、読んだサムネイルはメモリに持つ（1 回の fetch は数 ms。グリッドで毎回引くと固まる）
+    @ObservationIgnored private var thumbnailCache: [UUID: Data?] = [:]
     func thumbnail(catchID: UUID) -> Data? {
-        (try? fetchOne(CatchRecord.self, #Predicate { $0.uuid == catchID }))?.thumbnailJPEG
+        if let cached = thumbnailCache[catchID] { return cached }
+        let data = (try? fetchOne(CatchRecord.self, #Predicate { $0.uuid == catchID }))?.thumbnailJPEG
+        if thumbnailCache.count > 400 { thumbnailCache.removeAll() }
+        thumbnailCache[catchID] = data
+        return data
     }
 
     func deleteCatch(id: UUID) throws {
         guard let record = try fetchOne(CatchRecord.self, #Predicate { $0.uuid == id }) else { return }
         context.delete(record)
+        thumbnailCache[id] = nil
         try commit()
     }
 
@@ -278,6 +306,7 @@ final class FogStore {
     // MARK: 全削除
 
     func deleteAll() throws {
+        thumbnailCache.removeAll()
         try context.delete(model: NoteRecord.self)
         try context.delete(model: SpotRecord.self)
         try context.delete(model: SessionRecord.self)
@@ -328,10 +357,11 @@ final class FogStore {
         for orphan in byID.values { context.delete(orphan) }
     }
 
-    private func commit() throws {
+    private func commit(minor: Bool = false, notify: Bool? = nil) throws {
         guard context.hasChanges else { return }
         try context.save()
         revision += 1
-        NotificationCenter.default.post(name: .fogStoreDidChange, object: self)
+        if !minor { analysisRevision += 1 }
+        if notify ?? !minor { NotificationCenter.default.post(name: .fogStoreDidChange, object: self) }
     }
 }

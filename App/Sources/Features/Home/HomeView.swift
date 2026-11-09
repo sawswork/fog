@@ -5,7 +5,7 @@ import Core
 /// ホーム（§3）。開いた瞬間に「今釣れるか」を数字で、「なぜか」を 4 チップで、「次に何が変わるか」をイベント列で示す。
 struct HomeView: View {
     @Environment(AppServices.self) private var services
-    @State private var model = HomeViewModel()
+    private var model: HomeViewModel { services.homeModel }
     @State private var showBreakdown = false
     @State private var showSpots = false
     @State private var showSettings = false
@@ -220,20 +220,7 @@ struct HomeView: View {
                 }
                 .aspectRatio(1, contentMode: .fit)
                 .padding(.vertical, DS.Spacing.s)
-                if !model.speciesScores.isEmpty {
-                    HStack {
-                        Spacer()
-                        VStack(alignment: .leading, spacing: DS.Spacing.s) {
-                            ForEach(model.speciesScores, id: \.species) { s in
-                                HStack(alignment: .firstTextBaseline, spacing: DS.Spacing.s) {
-                                    Text("\(s.score)").font(DS.Font.number(22)).foregroundStyle(DS.Color.textPrimary)
-                                    Text(s.species).font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary).lineLimit(1)
-                                }
-                            }
-                        }
-                        .frame(width: 100, alignment: .leading)
-                    }
-                }
+                // 魚種別スコア（右脇の「89 アイナメ」）は 2026-11-09 開発者の指示で外した。魚種別は年間カレンダーの切替に残る
             }
             .frame(maxWidth: .infinity)
         }

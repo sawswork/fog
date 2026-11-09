@@ -88,9 +88,37 @@ final class AstroTests: XCTestCase {
 
     func testTideNameFromMoonAge() {
         XCTAssertEqual(TideName.from(moonAge: 0.5), .spring)
+        XCTAssertEqual(TideName.from(moonAge: 2.9), .spring)
+        XCTAssertEqual(TideName.from(moonAge: 3.1), .middle)
         XCTAssertEqual(TideName.from(moonAge: 7.5), .neap)
-        // 旧暦 10 日（月齢 9.x）が長潮、11 日（月齢 10.x）が若潮
-        XCTAssertEqual(TideName.from(moonAge: 9.5), .long)
-        XCTAssertEqual(TideName.from(moonAge: 10.4), .young)
+        // 月齢 10 が長潮、11 が若潮、12〜13 は中潮、14〜17 は大潮
+        XCTAssertEqual(TideName.from(moonAge: 10.4), .long)
+        XCTAssertEqual(TideName.from(moonAge: 11.2), .young)
+        XCTAssertEqual(TideName.from(moonAge: 12.5), .middle)
+        XCTAssertEqual(TideName.from(moonAge: 14.2), .spring)
+        XCTAssertEqual(TideName.from(moonAge: 17.9), .spring)
+        XCTAssertEqual(TideName.from(moonAge: 18.1), .middle)
+        XCTAssertEqual(TideName.from(moonAge: 25.5), .long)
+        XCTAssertEqual(TideName.from(moonAge: 26.5), .young)
+        // 新月の前日（月齢 28.x）は中潮、新月の日（29.x / 0.x）から大潮
+        XCTAssertEqual(TideName.from(moonAge: 28.4), .middle)
+        XCTAssertEqual(TideName.from(moonAge: 29.3), .spring)
+    }
+
+    /// 2026-11-09 16:02 JST が新月。前日の 11/8 は中潮、11/9〜11/11 は大潮（実機フィードバック：11/8 の釣果が「大潮」と記録されていた）
+    func testTideNameAroundNovember2026NewMoon() {
+        let jst = TimeZone(identifier: "Asia/Tokyo")!
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = jst
+        func day(_ d: Int, hour: Int = 16) -> Date { cal.date(from: DateComponents(year: 2026, month: 11, day: d, hour: hour))! }
+        XCTAssertEqual(TideName.on(day(8), timeZone: jst), .middle)
+        // 同じ日なら朝でも夜でも同じ潮名
+        XCTAssertEqual(TideName.on(day(8, hour: 5), timeZone: jst), .middle)
+        XCTAssertEqual(TideName.on(day(8, hour: 23), timeZone: jst), .middle)
+        XCTAssertEqual(TideName.on(day(9), timeZone: jst), .spring)
+        XCTAssertEqual(TideName.on(day(11), timeZone: jst), .spring)
+        XCTAssertEqual(TideName.on(day(12), timeZone: jst), .middle)
+        // 11/24 が満月 → 11/23〜11/26 が大潮
+        XCTAssertEqual(TideName.on(day(24), timeZone: jst), .spring)
+        XCTAssertEqual(TideName.on(day(19), timeZone: jst), .neap)
     }
 }

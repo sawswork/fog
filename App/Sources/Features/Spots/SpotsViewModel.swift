@@ -26,8 +26,16 @@ final class SpotsViewModel {
     }
     private var catalogPorts: [Card] = []
     private var searchPorts: [Card] = []
-    private(set) var currentLocation: Coordinate?
+    /// 現在地（`LocationService` の最新の位置。地図を開いている間は前面の更新で動く）
+    var currentLocation: Coordinate? { services?.location.lastFix?.coordinate }
     private var services: AppServices?
+    /// 車での所要時間・距離（MapKit の経路検索。F-56）。鍵は「出発地（500 m 単位）→釣り場」
+    private(set) var etas: [String: DriveETA] = [:]
+    private var etaInFlight: Set<String> = []
+    /// 表示中の経路（F-57）
+    private(set) var route: MKRoute?
+    private(set) var routeTarget: Spot?
+    private(set) var routeError: String?
     private let cache = AnalysisCache()
     private var candidateIDs: [String: UUID] = [:]
     private let portCatalog = PortCatalog.bundled()
@@ -55,14 +63,11 @@ final class SpotsViewModel {
         let spots = (try? store.spots()) ?? []
         let sessions = (try? store.sessions()) ?? []
         let bySpot = Analytics.statsBySpot(sessions: sessions)
-        currentLocation = services.location.lastFix?.coordinate
         let now = Date()
-        let personal = cache.value("personalModel", store: store) {
-            PersonalModel.learn(from: sessions.filter { !$0.isActive }, coordinateOf: { s in spots.first { $0.id == s.spotID }?.coordinate })
-        }
-        let engine = ScoreEngine(personal: personal.total.hours >= 1 ? personal : nil)
+        let engine = scoreEngine()
+        let currentLocation = self.currentLocation
         cards = spots.map { spot in
-            let env = services.environment.snapshot(at: now, coordinate: spot.coordinate)
+            let env = services.environment.scoreSnapshot(at: now, coordinate: spot.coordinate)
             let score = engine.score(ScoreInput(at: now, coordinate: spot.coordinate, env: env)).score
             let stats = bySpot[spot.id] ?? Analytics.spotStats(sessions: [])
             let d = currentLocation.map { Geo.distanceMeters($0, spot.coordinate) }
@@ -117,7 +122,7 @@ final class SpotsViewModel {
             let key = "\(port.name)@\(Int(c.latitude * 1000)),\(Int(c.longitude * 1000))"
             let id = candidateIDs[key] ?? UUID()
             candidateIDs[key] = id
-            let env = services.environment.snapshot(at: now, coordinate: c)
+            let env = services.environment.scoreSnapshot(at: now, coordinate: c)
             let score = engine.score(ScoreInput(at: now, coordinate: c, env: env)).score
             out.append(Card(spot: Spot(id: id, name: port.name, coordinate: c, isRegistered: false), stats: Analytics.spotStats(sessions: []), score: score,
                             distanceM: currentLocation.map { Geo.distanceMeters($0, c) }, isCandidate: true))
@@ -134,8 +139,76 @@ final class SpotsViewModel {
         let near = currentLocation ?? spots.first?.coordinate
         let places = FeedCatchExtractor.places(spots: spots, ports: portCatalog.ports, near: near)
         let words = FeedCatchExtractor.speciesWords((try? services.store.species()) ?? Species.initialCatalog)
-        let catches = services.feeds.items.flatMap { FeedCatchExtractor.extract($0, places: places, speciesWords: words) }
+        var catches = services.feeds.items.flatMap { FeedCatchExtractor.extract($0, places: places, speciesWords: words) }
+        // 仲間の釣果（F-54）も同じピンに載せる（場所は釣り場名、座標は撮影位置）
+        catches += services.party.others.filter { $0.coordinate.isPlausible }.map { $0.feedCatch() }
         return FeedCatchExtractor.pins(catches)
+    }
+
+    // MARK: 車の所要時間・距離（F-56）と経路（F-57）
+
+    struct DriveETA: Sendable { let seconds: TimeInterval; let meters: Double; let at: Date }
+
+    private func etaKey(from origin: Coordinate, to spot: Spot) -> String {
+        "\(Int(origin.latitude * 200)),\(Int(origin.longitude * 200))>\(spot.id.uuidString)"
+    }
+
+    /// 取得済みの所要時間（無ければ nil。`requestETA` で取りに行く）
+    func eta(for spot: Spot) -> DriveETA? {
+        guard let origin = currentLocation else { return nil }
+        return etas[etaKey(from: origin, to: spot)]
+    }
+
+    /// MapKit に車の所要時間を聞く（同じ出発地・釣り場は 1 回だけ。同時に 3 件まで、圏外なら黙って諦める）
+    func requestETA(for spot: Spot) async {
+        guard let origin = currentLocation, spot.coordinate.isPlausible, Geo.distanceMeters(origin, spot.coordinate) > 200 else { return }
+        let key = etaKey(from: origin, to: spot)
+        guard etas[key] == nil, !etaInFlight.contains(key), etaInFlight.count < 3 else { return }
+        etaInFlight.insert(key)
+        defer { etaInFlight.remove(key) }
+        let request = MKDirections.Request()
+        request.source = MKMapItem(placemark: MKPlacemark(coordinate: origin.cl))
+        request.destination = MKMapItem(placemark: MKPlacemark(coordinate: spot.coordinate.cl))
+        request.transportType = .automobile
+        guard let r = try? await MKDirections(request: request).calculateETA() else { return }
+        etas[key] = DriveETA(seconds: r.expectedTravelTime, meters: r.distance, at: Date())
+        if etas.count > 200 { etas = etas.filter { Date().timeIntervalSince($0.value.at) < 3600 } }
+    }
+
+    static func etaText(_ e: DriveETA) -> String {
+        let m = Int((e.seconds / 60).rounded())
+        let time = m >= 60 ? "\(m / 60)時間\(m % 60 == 0 ? "" : "\(m % 60)分")" : "\(m)分"
+        let km = e.meters >= 10_000 ? String(format: "%.0f km", e.meters / 1000) : String(format: "%.1f km", e.meters / 1000)
+        return "車 \(time) · \(km)"
+    }
+
+    /// 現在地からの車の経路を地図に出す（同じ釣り場をもう一度なら消す）
+    func toggleRoute(to spot: Spot) async {
+        if routeTarget?.id == spot.id { clearRoute(); return }
+        guard let origin = currentLocation else { routeError = "現在地が分かりません"; return }
+        let request = MKDirections.Request()
+        request.source = MKMapItem(placemark: MKPlacemark(coordinate: origin.cl))
+        request.destination = MKMapItem(placemark: MKPlacemark(coordinate: spot.coordinate.cl))
+        request.transportType = .automobile
+        do {
+            let response = try await MKDirections(request: request).calculate()
+            route = response.routes.first
+            routeTarget = spot
+            routeError = route == nil ? "経路が見つかりません" : nil
+            if let r = route { etas[etaKey(from: origin, to: spot)] = DriveETA(seconds: r.expectedTravelTime, meters: r.distance, at: Date()) }
+        } catch {
+            route = nil; routeTarget = nil
+            routeError = "経路を取れません（圏外）"
+        }
+    }
+
+    func clearRoute() { route = nil; routeTarget = nil; routeError = nil }
+
+    /// Apple のマップで経路案内を始める（ターンバイターンはマップに任せる。F-57）
+    static func openInMaps(_ spot: Spot) {
+        let item = MKMapItem(placemark: MKPlacemark(coordinate: spot.coordinate.cl))
+        item.name = spot.name
+        item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving])
     }
 
     // MARK: 釣り場の比較（F-30）
@@ -184,12 +257,13 @@ final class SpotsViewModel {
         return rows.sorted { $0.maxScore > $1.maxScore }
     }
 
+    /// 自分データの重み付きエンジン（他の人の魚は学習に入れない。F-54）。ストアの版が同じ間は使い回す
     private func scoreEngine() -> ScoreEngine {
         guard let services else { return ScoreEngine() }
-        let sessions = (try? services.store.sessions()) ?? []
-        let spots = (try? services.store.spots()) ?? []
         let personal = cache.value("personalModel", store: services.store) {
-            PersonalModel.learn(from: sessions.filter { !$0.isActive }, coordinateOf: { s in spots.first { $0.id == s.spotID }?.coordinate })
+            let sessions = (try? services.store.ownSessions()) ?? []
+            let spots = (try? services.store.spots()) ?? []
+            return PersonalModel.learn(from: sessions.filter { !$0.isActive }, coordinateOf: { s in spots.first { $0.id == s.spotID }?.coordinate })
         }
         return ScoreEngine(personal: personal.total.hours >= 1 ? personal : nil)
     }
@@ -197,13 +271,9 @@ final class SpotsViewModel {
     private func setPortCandidates(_ items: [MKMapItem]) {
         guard let services else { return }
         let existing = (try? services.store.spots()) ?? []
-        let sessions = (try? services.store.sessions()) ?? []
-        let spots = existing
-        let personal = cache.value("personalModel", store: services.store) {
-            PersonalModel.learn(from: sessions.filter { !$0.isActive }, coordinateOf: { s in spots.first { $0.id == s.spotID }?.coordinate })
-        }
-        let engine = ScoreEngine(personal: personal.total.hours >= 1 ? personal : nil)
+        let engine = scoreEngine()
         let now = Date()
+        let currentLocation = self.currentLocation
         var out: [Card] = []
         for item in items {
             guard let name = item.name, Self.looksLikePort(name: name, category: item.pointOfInterestCategory) else { continue }
@@ -213,7 +283,7 @@ final class SpotsViewModel {
             let key = "\(name)@\(Int(c.latitude * 1000)),\(Int(c.longitude * 1000))"
             let id = candidateIDs[key] ?? UUID()
             candidateIDs[key] = id
-            let env = services.environment.snapshot(at: now, coordinate: c)
+            let env = services.environment.scoreSnapshot(at: now, coordinate: c)
             let score = engine.score(ScoreInput(at: now, coordinate: c, env: env)).score
             let spot = Spot(id: id, name: name, coordinate: c, isRegistered: false)
             out.append(Card(spot: spot, stats: Analytics.spotStats(sessions: []), score: score,

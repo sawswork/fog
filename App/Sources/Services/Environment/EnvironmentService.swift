@@ -85,6 +85,12 @@ final class EnvironmentService {
         builder(for: coordinate).build(at: date, coordinate: coordinate, inputs: inputs(for: coordinate))
     }
 
+    /// 釣れ率の計算用：潮位・変化率・潮名・気象は入るが、次の満干は探さない（釣り場カード・港の候補のように点が多い所で使う。`snapshot` の 10 倍以上速い）
+    func scoreSnapshot(at date: Date, coordinate: Coordinate) -> EnvSnapshot {
+        let b = builder(for: coordinate)
+        return b.buildForScore(at: date, coordinate: coordinate, inputs: inputs(for: coordinate), tide: b.tideStation.map { TideEngine(station: $0) })
+    }
+
     /// 気象・海況だけのスナップショット（潮汐の満干探索をしない。表や週行・ウィジェットのように潮が要らない所で使う。10 倍以上速い）
     func weatherSnapshot(at date: Date, coordinate: Coordinate) -> EnvSnapshot {
         builder(for: coordinate).build(at: date, coordinate: coordinate, inputs: inputs(for: coordinate), tide: nil, extremes: [])
