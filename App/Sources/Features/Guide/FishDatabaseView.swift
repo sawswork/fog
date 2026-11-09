@@ -34,14 +34,18 @@ struct FishImageView: View {
     @State private var image: UIImage?
 
     var body: some View {
-        ZStack {
-            DS.Color.surfaceRaised
-            if let image {
-                Image(uiImage: image).resizable().scaledToFill()
-            } else {
-                Image(systemName: "fish").font(.system(size: 26)).foregroundStyle(DS.Color.faded)
+        // 画像の固有サイズを外に伝えない（Color.clear を土台にして overlay で描き、はみ出しは切る）。
+        // 2026-11-09：scaledToFill の画像が枠を越えて一覧と詳細の幅を押し広げていた
+        Color.clear
+            .background(DS.Color.surfaceRaised)
+            .overlay {
+                if let image {
+                    Image(uiImage: image).resizable().scaledToFill()
+                } else {
+                    Image(systemName: "fish").font(.system(size: 26)).foregroundStyle(DS.Color.faded)
+                }
             }
-        }
+            .clipped()
         .task(id: file) {
             guard let file else { image = nil; return }
             image = await FishImages.thumbnail(file, maxPixel: maxPixel)
@@ -183,7 +187,7 @@ struct FishCard: View {
         VStack(alignment: .leading, spacing: 6) {
             ZStack(alignment: .topTrailing) {
                 FishImageView(file: entry.image, maxPixel: 360)
-                    .aspectRatio(1, contentMode: .fill)
+                    .aspectRatio(1, contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 if let caught {
                     Text("\(caught)尾").font(DS.Font.number(10)).foregroundStyle(DS.Color.background)
@@ -249,7 +253,7 @@ struct FishDetailView: View {
 
     private var hero: some View {
         ZStack(alignment: .bottomLeading) {
-            FishImageView(file: entry.image, maxPixel: 1000).frame(height: 240).clipped()
+            FishImageView(file: entry.image, maxPixel: 1000).frame(maxWidth: .infinity).frame(height: 240).clipped()
             LinearGradient(colors: [.clear, DS.Color.background.opacity(0.9)], startPoint: .center, endPoint: .bottom)
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.name).font(DS.Font.number(28)).foregroundStyle(DS.Color.textPrimary)

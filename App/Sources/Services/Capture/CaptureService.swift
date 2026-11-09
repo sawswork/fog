@@ -79,13 +79,14 @@ final class CaptureService {
         return persist(item, in: session, thumbnail: PhotoLibraryService.thumbnailJPEG(from: image))
     }
 
-    /// 取り込み（標準カメラの写真）：サイズ未計測で保存。
-    func recordImported(image: CGImage, photoIdentifier: String, at date: Date, coordinate: Coordinate?, session: Core.Session) async -> Outcome? {
+    /// 取り込み（標準カメラの写真）：メジャーが写っていればそこから全長（F-61）、無ければ未計測で保存。
+    func recordImported(image: CGImage, photoIdentifier: String, at date: Date, coordinate: Coordinate?, session: Core.Session, measurement: LengthMeasurement? = nil) async -> Outcome? {
         let candidates = await classifier.classify(image)
         let location = coordinate ?? (try? store.spot(id: session.spotID))?.coordinate ?? Coordinate(latitude: 0, longitude: 0)
         var item = Catch(
             sessionID: session.id, at: date, coordinate: location,
             species: candidates.first?.species ?? "", speciesConfidence: candidates.first?.confidence ?? 0,
+            lengthCm: measurement?.lengthCm, lengthErrorCm: measurement?.errorCm,
             photoLocalIdentifier: photoIdentifier, tackle: session.tackle, rigID: session.rigID,
             env: environment.snapshot(at: date, coordinate: location),
             speciesCandidates: candidates, photoLocalIdentifiers: [photoIdentifier], tackleID: session.tackleID
@@ -132,8 +133,33 @@ final class CaptureService {
 
     /// 記録中の釣行。無ければ撮影位置で手動の釣行を始める（撮影は釣行の証拠）。
     /// 位置が取れないときは (0, 0) の釣り場を作らず、ホームで選んだ釣り場 → 直近の釣行の釣り場 → 「位置不明」（未登録）の順で使う。
-    private func ensureSession(at date: Date, coordinate: Coordinate?) async -> Core.Session {
+    func ensureSession(at date: Date, coordinate: Coordinate?) async -> Core.Session {
         if let active = try? store.activeSession() { return active }
+        let spot = spotForSession(at: date, coordinate: coordinate)
+        let previous = (try? store.sessions())?.first
+        var session = Core.Session(spotID: spot.id, startedAt: date, tackle: previous?.tackle, rigID: previous?.rigID,
+                                   track: [TrackSample(at: date, coordinate: (coordinate?.isPlausible == true ? coordinate : nil) ?? spot.coordinate)], tackleID: previous?.tackleID, isAutoDetected: false)
+        // 位置が無い釣行は自動では終われない（位置で終了を判定するため）ので、その場で終えておく。ホームの「記録中」にもしない
+        if !spot.coordinate.isPlausible { session.endedAt = date }
+        try? store.upsert(session)
+        // 位置のある釣行はそのまま「記録中」にする（立ち位置・スナップショット・安全通知を始める。終了はホームのボタン）
+        if session.isActive { detection.adopt(session: session, coordinate: coordinate ?? spot.coordinate) }
+        return session
+    }
+
+    /// 過去の写真の取り込み用（F-61）：撮影時刻を含む終了済みの釣行を作る（進行中の釣行には混ぜない。「記録中」にもしない）
+    func pastSession(at date: Date, coordinate: Coordinate?) -> Core.Session {
+        let spot = spotForSession(at: date, coordinate: coordinate)
+        let previous = (try? store.sessions())?.first { $0.startedAt < date }
+        var session = Core.Session(spotID: spot.id, startedAt: date.addingTimeInterval(-30 * 60), tackle: previous?.tackle, rigID: previous?.rigID,
+                                   track: [TrackSample(at: date, coordinate: (coordinate?.isPlausible == true ? coordinate : nil) ?? spot.coordinate)], tackleID: previous?.tackleID, isAutoDetected: false)
+        session.endedAt = date.addingTimeInterval(30 * 60)
+        try? store.upsert(session)
+        return session
+    }
+
+    /// 新しい釣行の釣り場：近くの登録釣り場 → 位置から作る → ホームの釣り場 → 直近の釣り場 → 位置不明
+    private func spotForSession(at date: Date, coordinate: Coordinate?) -> Spot {
         let spots = (try? store.spots()) ?? []
         let spot: Spot
         if let location = coordinate, location.isPlausible {
@@ -156,15 +182,7 @@ final class CaptureService {
             spot = Spot(name: "位置不明", coordinate: Coordinate(latitude: 0, longitude: 0), isRegistered: false, createdAt: date)
             try? store.upsert(spot)
         }
-        let previous = (try? store.sessions())?.first
-        var session = Core.Session(spotID: spot.id, startedAt: date, tackle: previous?.tackle, rigID: previous?.rigID,
-                                   track: [TrackSample(at: date, coordinate: (coordinate?.isPlausible == true ? coordinate : nil) ?? spot.coordinate)], tackleID: previous?.tackleID, isAutoDetected: false)
-        // 位置が無い釣行は自動では終われない（位置で終了を判定するため）ので、その場で終えておく。ホームの「記録中」にもしない
-        if !spot.coordinate.isPlausible { session.endedAt = date }
-        try? store.upsert(session)
-        // 位置のある釣行はそのまま「記録中」にする（立ち位置・スナップショット・安全通知を始める。終了はホームのボタン）
-        if session.isActive { detection.adopt(session: session, coordinate: coordinate ?? spot.coordinate) }
-        return session
+        return spot
     }
 
     /// タックル・リグの後からの設定（シンカー・フック・ワームはリグのプリセット。2026-11-09 開発者の指示）

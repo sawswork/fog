@@ -80,3 +80,22 @@ struct HomeMiniMap: View {
         .task { if services.spotsModel.cards.isEmpty { services.spotsModel.attach(services) } }
     }
 }
+
+
+/// テーマの `style.glass` 用の面：ぼかし（material）あり／なし、面の濃さ、薄い白い枠と上辺のハイライト
+struct GlassShape: View {
+    var cornerRadius: CGFloat
+    var opacity: Double
+    var blur: Bool
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        ZStack {
+            if blur { shape.fill(.ultraThinMaterial) }
+            shape.fill(DS.Color.panel.opacity(opacity))
+            // 上辺がわずかに明るいガラスの質感
+            shape.fill(LinearGradient(colors: [Color.white.opacity(0.10), Color.white.opacity(0.02), .clear], startPoint: .top, endPoint: .bottom))
+            shape.strokeBorder(Color.white.opacity(0.35), lineWidth: 1)
+        }
+    }
+}
