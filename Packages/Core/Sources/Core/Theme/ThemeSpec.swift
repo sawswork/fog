@@ -106,7 +106,10 @@ public struct HomeLayout: Codable, Hashable, Sendable {
     /// 範囲外の座標を 0〜1 に収め、知らない種類の部品を落とし、z の順に並べる
     public func sanitized() -> HomeLayout {
         var out = self
-        out.layers = layers.map { var l = $0; l.rect = l.rect.clamped(); l.opacity = min(1, max(0, l.opacity)); return l }.sorted { $0.z < $1.z }
+        out.layers = layers.filter { !$0.image.isEmpty || $0.effect != nil }
+            .map { var l = $0; l.rect = l.rect.clamped(); l.opacity = min(1, max(0, l.opacity))
+                   l.speed = min(5, max(0.1, l.speed)); l.amount = min(3, max(0, l.amount)); l.count = l.count.map { min(200, max(0, $0)) }; return l }
+            .sorted { $0.z < $1.z }
         out.blocks = blocks.filter { $0.kind != nil && $0.rect.w > 0 && $0.rect.h > 0 }
             .map { var b = $0; b.rect = b.rect.clamped(); b.opacity = min(1, max(0, b.opacity)); return b }
             .sorted { $0.z < $1.z }
@@ -116,7 +119,7 @@ public struct HomeLayout: Codable, Hashable, Sendable {
 
     /// 画像の 1 枚
     public struct Layer: Codable, Hashable, Sendable {
-        /// テーマフォルダの画像名（拡張子なし）
+        /// テーマフォルダの画像名（拡張子なし）。`effect` の層では空
         public var image: String
         public var rect: LayoutRect
         /// fill（はみ出しを切って埋める）/ fit（全体が入るように）
@@ -125,19 +128,41 @@ public struct HomeLayout: Codable, Hashable, Sendable {
         public var opacity: Double
         /// auto（背景色から自動：マゼンタ抜き・黒抜き）/ normal（そのまま）
         public var blend: String
-        public init(image: String, rect: LayoutRect = .full, fit: String = "fill", z: Int = 0, opacity: Double = 1, blend: String = "auto") {
+        /// 画像の動き：float（上下にふわり）/ breathe（呼吸）/ sway（左右に揺れる）/ spin（ゆっくり回る）/ drift（背景がゆっくり寄る）/ pulse（明滅）。省略は動かない
+        public var motion: String?
+        /// 動き・効果の速さの倍率（1 が既定、0.1〜5）
+        public var speed: Double
+        /// 動き・効果の大きさの倍率（1 が既定、0〜3）
+        public var amount: Double
+        /// 画像の代わりに描く効果：fireflies（光の粒）/ leaves（舞う葉）/ sparkles（きらめき）/ bubbles（泡）
+        public var effect: String?
+        /// 効果の粒の数（省略は効果ごとの既定）
+        public var count: Int?
+        /// 効果の色 `#RRGGBB`（省略はアクセント色）
+        public var color: String?
+        public init(image: String = "", rect: LayoutRect = .full, fit: String = "fill", z: Int = 0, opacity: Double = 1, blend: String = "auto",
+                    motion: String? = nil, speed: Double = 1, amount: Double = 1, effect: String? = nil, count: Int? = nil, color: String? = nil) {
             self.image = image; self.rect = rect; self.fit = fit; self.z = z; self.opacity = opacity; self.blend = blend
+            self.motion = motion; self.speed = speed; self.amount = amount; self.effect = effect; self.count = count; self.color = color
         }
-        enum CodingKeys: String, CodingKey { case image, rect, fit, z, opacity, blend }
+        enum CodingKeys: String, CodingKey { case image, rect, fit, z, opacity, blend, motion, speed, amount, effect, count, color }
         public init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
-            image = try c.decode(String.self, forKey: .image)
+            image = try c.decodeIfPresent(String.self, forKey: .image) ?? ""
             rect = try c.decodeIfPresent(LayoutRect.self, forKey: .rect) ?? .full
             fit = try c.decodeIfPresent(String.self, forKey: .fit) ?? "fill"
             z = try c.decodeIfPresent(Int.self, forKey: .z) ?? 0
             opacity = try c.decodeIfPresent(Double.self, forKey: .opacity) ?? 1
             blend = try c.decodeIfPresent(String.self, forKey: .blend) ?? "auto"
+            motion = try c.decodeIfPresent(String.self, forKey: .motion)
+            speed = try c.decodeIfPresent(Double.self, forKey: .speed) ?? 1
+            amount = try c.decodeIfPresent(Double.self, forKey: .amount) ?? 1
+            effect = try c.decodeIfPresent(String.self, forKey: .effect)
+            count = try c.decodeIfPresent(Int.self, forKey: .count)
+            color = try c.decodeIfPresent(String.self, forKey: .color)
         }
+        /// 効果の色（読めなければ nil → アクセント色）
+        public var parsedColor: HexColor? { color.flatMap(HexColor.init) }
     }
 
     /// 部品の 1 つ

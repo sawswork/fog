@@ -13,25 +13,27 @@
   },
   "home": {
     "hidesTabBar": true,
-    "scrim": 0.12,
+    "scrim": 0.10,
     "layers": [
-      { "image": "bg_home",   "rect": [0, 0, 1, 1],              "fit": "fill", "z": 0 },
-      { "image": "ring_home", "rect": [0.20, 0.045, 0.60, 0.275],  "fit": "fit",  "z": 30, "opacity": 0.95 },
-      { "image": "char_home", "rect": [0.10, 0.20, 0.80, 0.60],    "fit": "fit",  "z": 40 },
-      { "image": "map_frame", "rect": [0.00, 0.68, 1.00, 0.26],    "fit": "fill", "z": 55, "opacity": 0.9 }
+      { "image": "bg_home",   "rect": [0, 0, 1, 1],               "fit": "fill", "z": 0,  "motion": "drift", "speed": 1, "amount": 1 },
+      { "effect": "fireflies", "rect": [0, 0, 1, 1],              "z": 10, "count": 34, "color": "#9BE3B3", "speed": 1, "amount": 1 },
+      { "image": "ring_home", "rect": [0.14, 0.01, 0.72, 0.33],   "fit": "fit",  "z": 30, "opacity": 0.95, "motion": "spin", "speed": 0.6 },
+      { "image": "char_home", "rect": [0.10, 0.16, 0.80, 0.63],   "fit": "fit",  "z": 40, "motion": "float", "speed": 1, "amount": 1 },
+      { "effect": "sparkles", "rect": [0.08, 0.20, 0.84, 0.56],   "z": 42, "count": 14, "color": "#F2D06B", "opacity": 0.9 },
+      { "effect": "leaves",   "rect": [0, 0, 1, 1],               "z": 45, "count": 9,  "color": "#8FD9A0", "opacity": 0.85, "speed": 1 },
+      { "image": "map_frame", "rect": [0.00, 0.700, 1.00, 0.246], "fit": "fit",  "z": 56, "opacity": 0.92 }
     ],
     "blocks": [
-      { "type": "header",        "rect": [0.04, 0.00, 0.92, 0.12], "z": 90 },
-      { "type": "score",         "rect": [0.30, 0.085, 0.40, 0.19], "z": 50 },
-      { "type": "chips",         "rect": [0.06, 0.275, 0.88, 0.065], "z": 60, "opacity": 0.95 },
-      { "type": "chart",         "rect": [0.05, 0.345, 0.44, 0.15], "z": 60, "background": "glass", "padding": 6 },
-      { "type": "table",         "rect": [0.52, 0.345, 0.44, 0.15], "z": 60, "background": "glass", "padding": 6 },
-      { "type": "feedLine",      "rect": [0.08, 0.50, 0.84, 0.03],  "z": 60 },
-      { "type": "recentCatches", "rect": [0.06, 0.535, 0.44, 0.15], "z": 60, "action": "log" },
-      { "type": "week",          "rect": [0.52, 0.545, 0.44, 0.07], "z": 60, "background": "glass", "padding": 4 },
-      { "type": "text",          "rect": [0.74, 0.625, 0.22, 0.05], "z": 60, "text": "FROM EMERALD\nTO WHITE", "style": "caption" },
-      { "type": "miniMap",       "rect": [0.02, 0.70, 0.96, 0.21], "z": 50, "action": "spots" },
-      { "type": "nav",           "rect": [0.00, 0.92, 1.00, 0.08], "z": 100, "style": "compact" }
+      { "type": "header",        "rect": [0.04, 0.00, 0.92, 0.12],   "z": 90 },
+      { "type": "score",         "rect": [0.31, 0.085, 0.38, 0.175], "z": 50 },
+      { "type": "chart",         "rect": [0.04, 0.345, 0.46, 0.16],  "z": 60, "background": "glass", "padding": 6 },
+      { "type": "table",         "rect": [0.52, 0.345, 0.44, 0.16],  "z": 60, "background": "glass", "padding": 6 },
+      { "type": "feedLine",      "rect": [0.06, 0.515, 0.88, 0.035], "z": 60 },
+      { "type": "recentCatches", "rect": [0.05, 0.558, 0.46, 0.135], "z": 60, "action": "log" },
+      { "type": "week",          "rect": [0.53, 0.562, 0.43, 0.07],  "z": 60, "background": "glass", "padding": 4 },
+      { "type": "button",        "rect": [0.62, 0.645, 0.11, 0.05],  "z": 70, "image": "tab_guide",  "action": "guide" },
+      { "type": "button",        "rect": [0.78, 0.635, 0.16, 0.07],  "z": 70, "image": "tab_camera", "action": "capture" },
+      { "type": "miniMap",       "rect": [0.035, 0.715, 0.93, 0.215], "z": 50, "action": "spots" }
     ]
   }
 }
