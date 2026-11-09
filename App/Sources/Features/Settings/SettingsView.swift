@@ -795,7 +795,7 @@ struct ThemeSettingsView: View {
             List {
                 Section {
                     Picker("テーマ", selection: $theme) {
-                        ForEach(AppTheme.allCases) { Text($0.label).tag($0) }
+                        ForEach(AppTheme.all) { Text($0.label).tag($0) }
                     }
                     .pickerStyle(.segmented)
                     .settingsRow()

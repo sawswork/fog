@@ -25,6 +25,9 @@ Claude Code が設計判断で迷ったら、まずここに「提案」とし�
 | 足場タグ（F-31）を `CatchRecord.sceneTagsData` に保存する | これまで保存されておらず、再起動で消えていた | `CatchRecord` |
 | 釣果の位置は、撮影画面を開いている間の 10 m 精度の最新位置を最優先にする（10 分以内）。以前は 100 m 精度の立ち位置が先だった | 開発者「ログの釣れた地点の精度が悪い」。GPS の限界（開けた港で 5〜10 m）までは出せる | `CaptureViewModel.depthCoordinate`, `LocationService.beginForegroundUpdates` |
 | 日付は端末の言語に関わらず日本語表記（`JPFormat`）。図鑑の魚種詳細・釣行詳細は見出し付きの区画に分ける | 開発者「パッと見で分かりづらい」。端末が英語設定で「Nov 8」と出ていた | `JPFormat`, `SpeciesDetailView`, `SessionDetailView` |
+| テーマは `theme.json`（Core の `ThemeSpec`）で定義する。配色・書体の上書きと、ホーム 1 画面の部品の配置（`HomeLayout`：画像の層と部品を画面に対する割合の座標に置く）。`AppTheme` は enum から値型にし、`Themes/*/theme.json` を起動時に探す。ホームは配置があれば `HomeView.composed` で部品を並べ、無ければ従来の縦積み | 開発者「今後様々な配置やレイアウト、画像を使ってテーマを変えていく。対応しやすいように」。画像とキャラクターは Gemini で作って置くだけにし、配置も JSON で済ませてコードを触らない | `ThemeSpec`（Core）, `AppTheme`, `HomeView.composed`, `HomeBlocks`, `TabIconsRow`, `docs/07_theme_spec.md` |
+| 配置のあるテーマはタブバーを消せる（`hidesTabBar`）。画面の行き来は `nav` / `button` の部品で、ホーム以外の画面には右下に「ホームへ戻る」ボタンを出す | 参考イメージは下のメニューが無い 1 枚の画面。戻れなくならないための最小の逃げ道 | `RootTabView`, `switchTab` 環境値 |
+| 部品の座標は安全領域を含む全画面の割合。`header` だけ上の安全領域を自動で避け、`nav` は下を避ける | 画像テーマは全画面に敷きたい。ノッチの下に文字が入らないように | `HomeView.composed` |
 | **保留**：漁港の詳細な地形マップに「どこで釣れそうか」を表現する機能 | 港内の水深・海底の起伏・捨て石の位置を示す公開データが無い（海上保安庁の海図は有償、国土数値情報の港データは点だけ、Open-Meteo は数 km 格子）。自分と仲間の釣果の点（F-47）と根掛かりの点で代える | 開発者の了承どおり保留 |
 
 ### バックグラウンドの動作（開発者の質問への答え）

@@ -1,0 +1,97 @@
+# テーマ定義 `theme.json`（F-58）
+
+テーマは `App/Resources/Themes/<folder>/` に **画像と `theme.json`** を置くだけで増やせる。コードは触らない。
+`theme.json` は (1) 配色・書体の上書き、(2) ホーム 1 画面の「部品の配置」を持つ。起動時に全フォルダを探し、設定 > テーマ に並ぶ。
+
+## 1. 全体
+
+```json
+{
+  "version": 1,
+  "label": "森",
+  "base": "grimoireDark",
+  "fallbackFolder": "grimoire",
+  "light": false,
+  "fonts": { "text": "serif", "number": "serif" },
+  "colors": { "accent": "#9BE3B3", "panel": "#0B1A1466" },
+  "home": { ... }
+}
+```
+
+| キー | 意味 |
+| --- | --- |
+| `label` | 設定に出る名前 |
+| `base` | 土台（`dark` / `grimoire` / `grimoireDark` / `tensura`）。配色・書体・明暗の既定をここから取る。省略は `dark` |
+| `fallbackFolder` | このフォルダに無い画像を借りるフォルダ |
+| `light` | 明るい地か（シートやコントロールの配色も合わせる） |
+| `fonts.text` / `fonts.number` | `default` / `serif` / `rounded` / `monospaced` |
+| `colors` | 上書きする色。キー：`background` `surface` `surfaceRaised` `accent` `secondary` `sun` `daylight` `textPrimary` `textSecondary` `textTertiary` `faded` `sea` `moon` `saturday` `holiday` `panel` `scrim`。値は `#RRGGBB` か `#RRGGBBAA` |
+| `home` | ホームの配置（無ければ従来の縦積み＋タブバー） |
+
+組み込みのフォルダ（`grimoire` など）に `theme.json` を置くと、その組み込みテーマの上書きになる。
+
+## 2. ホームの配置 `home`
+
+```json
+"home": {
+  "hidesTabBar": true,
+  "scrim": 0.2,
+  "layers": [
+    { "image": "bg_home", "rect": [0, 0, 1, 1], "fit": "fill", "z": 0 },
+    { "image": "char_home", "rect": [0.08, 0.16, 0.84, 0.62], "fit": "fit", "z": 40, "opacity": 1 }
+  ],
+  "blocks": [
+    { "type": "header", "rect": [0.04, 0, 0.92, 0.13], "z": 60 },
+    { "type": "score", "rect": [0.28, 0.11, 0.44, 0.20], "z": 50 },
+    { "type": "nav", "rect": [0, 0.92, 1, 0.08], "z": 100, "style": "compact" }
+  ]
+}
+```
+
+- 座標 `rect` は **画面の幅・高さに対する割合** `[x, y, w, h]`（左上が 0,0。安全領域を含む全画面が基準。`{"x":..,"y":..,"w":..,"h":..}` でもよい）
+- `z` が小さいものから下に重ねる。画像（layers）と部品（blocks）は同じ z の空間に置かれる（キャラクターを部品の前にも後ろにも置ける）
+- `hidesTabBar: true` でタブバーを消す。画面の行き来は `nav` か `button` の部品で。ホーム以外の画面には右下に「ホームへ戻る」ボタンが出る
+- `scrim` は画像の上に敷く黒い幕の濃さ（0〜1）。省略は土台の既定
+
+### 画像の層 `layers[]`
+
+| キー | 意味 |
+| --- | --- |
+| `image` | フォルダ内のファイル名（拡張子なし。png / jpg） |
+| `rect` | 置く長方形。省略は全画面 |
+| `fit` | `fill`（はみ出しを切って埋める）/ `fit`（全体が入る） |
+| `opacity` | 0〜1 |
+| `blend` | `auto`（マゼンタ背景は透明に抜く、黒背景は黒を透かす）/ `normal` |
+
+### 部品 `blocks[]`
+
+| `type` | 中身 | 既定のタップ |
+| --- | --- | --- |
+| `header` | 釣り場名・時刻・開始/終了・相談・月・歯車（上の安全領域を自動で避ける） | 各ボタン |
+| `score` | 釣れ率の円（記録中はライブ画面） | 内訳 |
+| `chips` | 今の 4 チップ | 各チップの詳細 |
+| `feedLine` | 釣果情報の 1 行 | 一覧 |
+| `forecast` | 日付・グラフ・表・週・水温の全部（タブ版と同じ） | — |
+| `chart` | 日付とグラフだけ | グラフをタップで時刻の詳細 |
+| `table` | 3 時間ごとの表だけ | — |
+| `week` | 週の見通しだけ | 日へ |
+| `recentCatches` | 直近の釣果の写真（幅に収まるだけ） | `log` |
+| `miniMap` | 周りの釣り場の小さな地図（釣れ率の円） | `spots` |
+| `nav` | 5 つの画面のアイコン（`tab_*.png` があればそれ。`style: "compact"` で小さく） | 各画面 |
+| `button` | 1 つのボタン。`image`（フォルダの画像）か `symbol`（SF Symbols） | `action` |
+| `text` | `text` の文字。`style`: `caption` / `label` / `title` | — |
+| `date` | 表示中の日付 | 年間カレンダー |
+
+共通のキー：`rect` `z` `opacity` `action` `background`（`none` / `panel` / `glass`）`padding`（pt）。
+
+`action` の値：`home` `log` `capture` `guide` `spots` `settings` `breakdown`（内訳）`feed`（釣果情報）`assistant`（相談）`spotSwitch`（釣り場切替）`moon` `year` `toggleSession`（開始/終了）`none`。
+
+## 3. 作り方のコツ
+
+1. Gemini などで背景（9:16）とキャラクター（マゼンタ背景）を作り、フォルダに置く
+2. `theme.json` を書く。まず `layers` だけで見た目を決め、次に `blocks` を置く。座標は iPhone 16 Pro（402×874 pt）の割合で考える
+3. 置いた部品が画像の泡や枠に乗るように `rect` を合わせる。部品の後ろに面が要らなければ `background` は省略（`none`）
+4. `docs/06_device_verification.md` の手順で TestFlight に配信して確認する
+
+知らない `type` は無視される（古いビルドでも落ちない）。`rect` の範囲外は 0〜1 に収められる。読めない `theme.json` のフォルダはテーマとして出ない。
+`App/Resources/Themes/forest/` が最小の例。

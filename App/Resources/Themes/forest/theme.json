@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "label": "森（配置の例）",
+  "base": "grimoireDark",
+  "fonts": { "text": "serif", "number": "serif" },
+  "colors": {
+    "accent": "#9BE3B3",
+    "secondary": "#5FD3F3",
+    "panel": "#0B1A1466",
+    "scrim": "#00000040"
+  },
+  "home": {
+    "hidesTabBar": true,
+    "scrim": 0.2,
+    "layers": [
+      { "image": "bg_home",   "rect": [0, 0, 1, 1],          "fit": "fill", "z": 0 },
+      { "image": "char_home", "rect": [0.08, 0.16, 0.84, 0.62], "fit": "fit",  "z": 40 },
+      { "image": "map_frame", "rect": [0.0, 0.70, 1.0, 0.24],  "fit": "fill", "z": 45, "opacity": 0.95 }
+    ],
+    "blocks": [
+      { "type": "header",        "rect": [0.04, 0.00, 0.92, 0.13], "z": 60 },
+      { "type": "score",         "rect": [0.28, 0.11, 0.44, 0.20], "z": 50 },
+      { "type": "chart",         "rect": [0.05, 0.35, 0.50, 0.17], "z": 60, "background": "glass", "padding": 6 },
+      { "type": "table",         "rect": [0.57, 0.35, 0.40, 0.17], "z": 60, "background": "glass", "padding": 6 },
+      { "type": "feedLine",      "rect": [0.08, 0.53, 0.84, 0.03], "z": 60 },
+      { "type": "recentCatches", "rect": [0.05, 0.58, 0.46, 0.13], "z": 60, "action": "log" },
+      { "type": "week",          "rect": [0.53, 0.58, 0.44, 0.07], "z": 60, "background": "glass", "padding": 4 },
+      { "type": "text",          "rect": [0.60, 0.66, 0.36, 0.04], "z": 60, "text": "FROM EMERALD TO WHITE", "style": "caption" },
+      { "type": "miniMap",       "rect": [0.03, 0.71, 0.94, 0.21], "z": 50, "action": "spots" },
+      { "type": "nav",           "rect": [0.00, 0.92, 1.00, 0.08], "z": 100, "style": "compact" }
+    ]
+  }
+}
