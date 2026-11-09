@@ -674,6 +674,11 @@ struct ForecastChart: View {
                 HStack(spacing: 6) {
                     Text(Self.dayLabel(model.dayStart, timeZone: model.timeZone)).font(DS.Font.number(14)).foregroundStyle(DS.Color.textPrimary)
                     Text(model.dayOffset == 0 ? "今日" : (model.dayOffset == 1 ? "明日" : (model.dayOffset == -1 ? "昨日" : ""))).font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+                    // その日の潮名（大潮・中潮・小潮・長潮・若潮。2026-11-09 開発者の指示）。大潮は潮の色で目立たせる
+                    let tide = TideName.on(model.dayStart, timeZone: model.timeZone)
+                    Text(tide.rawValue).font(.system(size: 11, weight: .bold)).foregroundStyle(tide == .spring ? DS.Color.background : DS.Color.sea)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(tide == .spring ? DS.Color.sea : DS.Color.sea.opacity(0.18), in: Capsule())
                 }
             }
             .buttonStyle(.plain)
