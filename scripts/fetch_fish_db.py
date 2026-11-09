@@ -8,16 +8,105 @@
 - FishBase (fishbase.se): 最大全長・一般的な全長・生息環境・水深・水温・分布。CC BY-NC 3.0、出典として記録
 
 使い方: python3 scripts/fetch_fish_db.py --out Packages/Core/Sources/Core/Resources/Data/fish.json --images App/Resources/Fish [--only アイナメ,クロソイ] [--limit N]
-依存: requests, Pillow
+依存: requests, Pillow, mwparserfromhell
 """
 import argparse, json, os, re, sys, time, io, html
 import requests
 from PIL import Image
 
 UA = "FogFishGuide/1.0 (personal fishing app, https://github.com/sawswork/fog)"
-S = requests.Session(); S.headers["User-Agent"] = UA
+_S = requests.Session(); _S.headers["User-Agent"] = UA
+_last = {}
+
+class _Throttled:
+    """Wikimedia の礼儀（ホストごとに直列・1.5 秒に 1 回まで）と 429 の待ち直し"""
+    def get(self, url, **kw):
+        host = url.split("/")[2]
+        if "fishbase" in host:
+            return _S.get(url, **kw)
+        # 画像の配信元（upload）はロボット方針が厳しいので 1 枚ごとに十分あける
+        interval = 8.0 if host.startswith("upload.") else 1.5
+        for attempt in range(8):
+            wait = max(0.0, interval - (time.time() - _last.get(host, 0.0)))
+            if wait > 0: time.sleep(wait)
+            _last[host] = time.time()
+            r = _S.get(url, **kw)
+            if r.status_code == 429 or r.status_code >= 500:
+                ra = r.headers.get("Retry-After")
+                delay = max(float(ra) if ra and ra.isdigit() else 0.0, 30.0 * (attempt + 1))
+                print(f"   … {r.status_code} {host}、{delay:.0f} 秒待つ", flush=True); time.sleep(min(delay, 180)); continue
+            return r
+        return r
+S = _Throttled()
 HERE = os.path.dirname(os.path.abspath(__file__))
 OK_LICENSES = ("CC BY-SA", "CC BY ", "CC BY-", "CC0", "Public domain", "CC-BY", "cc-by", "pd", "PD", "Attribution")
+
+def wiki_page(title):
+    """jawiki の action API 1 回で QID・本文（wikitext）・正式な記事名を取る（リダイレクト解決）"""
+    r = S.get("https://ja.wikipedia.org/w/api.php", params={"action": "query", "prop": "pageprops|revisions", "ppprop": "wikibase_item", "rvprop": "content", "rvslots": "main",
+                                                         "titles": title, "redirects": 1, "format": "json", "formatversion": 2}, timeout=40)
+    if r.status_code != 200: return None
+    pages = r.json().get("query", {}).get("pages", [])
+    for p in pages:
+        if p.get("missing"): return None
+        wt = ((p.get("revisions") or [{}])[0].get("slots", {}).get("main", {}).get("content")) or ""
+        if "#転送" in wt[:20].upper() or wt[:9].upper() == "#REDIRECT": return None
+        return {"title": p.get("title"), "qid": p.get("pageprops", {}).get("wikibase_item"), "wikitext": wt}
+    return None
+
+def taxobox_sciname(wt):
+    """生物分類表の |学名 = から「属 種」を取る（{{Snamei|…}} や '' を剥がす）"""
+    m = re.search(r"\|\s*学名\s*=\s*(.{0,120})", wt or "")
+    if not m: return None
+    v = re.sub(r"\{\{[Ss]namei\|+([^}|]+)[^}]*\}\}", r"\1", m.group(1))
+    v = re.sub(r"<[^>]+>|''|\[\[|\]\]|\{\{|\}\}", "", v)
+    m2 = re.search(r"\b([A-Z][a-z]+)\s+([a-z]+)", v)
+    return f"{m2.group(1)} {m2.group(2)}" if m2 else None
+
+def taxobox_family(wt):
+    m = re.search(r"\|\s*科\s*=\s*\[\[([^\]|]+)(?:\|[^\]]*)?\]\]", wt or "")
+    if m: return m.group(1).strip()
+    m = re.search(r"\|\s*科\s*=\s*([^\n|<{]+)", wt or "")
+    return m.group(1).strip() if m and m.group(1).strip() else None
+
+def rest_summary(title):
+    """Wikipedia 日本語版の REST summary：リダイレクト解決・QID・要約。キャッシュが効くので action API より遠慮なく呼べる"""
+    r = S.get("https://ja.wikipedia.org/api/rest_v1/page/summary/" + requests.utils.quote(title, safe=""), timeout=30, headers={"Accept": "application/json"})
+    if r.status_code != 200: return None
+    return r.json()
+
+def entity_data(qid):
+    r = S.get(f"https://www.wikidata.org/wiki/Special:EntityData/{qid}.json", timeout=30)
+    r.raise_for_status()
+    return r.json().get("entities", {}).get(qid, {})
+
+def raw_wikitext(title):
+    r = S.get("https://ja.wikipedia.org/w/index.php", params={"title": title, "action": "raw"}, timeout=30)
+    if r.status_code != 200: return ""
+    return r.text
+
+def wikitext_to_plain(wt):
+    import mwparserfromhell as mw
+    # 見出しは strip で消えるので印に置き換えてから
+    wt = re.sub(r"^(=+)\s*(.+?)\s*\1\s*$", lambda m: "\n§§" + m.group(2).strip() + "§§\n", wt, flags=re.M)
+    code = mw.parse(wt)
+    # 表・ファイル・参照・テンプレートを落とす
+    for t in list(code.filter_templates(recursive=False)):
+        try: code.remove(t)
+        except Exception: pass
+    for tag in list(code.filter_tags(recursive=True)):
+        if tag.tag.lower() in ("ref", "gallery", "table", "imagemap", "timeline"):
+            try: code.remove(tag)
+            except Exception: pass
+    for wl in list(code.filter_wikilinks(recursive=True)):
+        if str(wl.title).lower().startswith(("file:", "ファイル:", "image:", "画像:", "category:", "カテゴリ:")):
+            try: code.remove(wl)
+            except Exception: pass
+    text = code.strip_code(normalize=True, collapse=True)
+    text = re.sub(r"\{\|.*?\|\}", "", text, flags=re.S)
+    text = re.sub(r"\[\[(?:[^\]|]*\|)?([^\]]*)\]\]", r"\1", text)
+    text = re.sub(r"§§(.+?)§§", r"\n== \1 ==\n", text)
+    return text
 
 def wd_search(name):
     r = S.get("https://www.wikidata.org/w/api.php", params={"action": "wbsearchentities", "search": name, "language": "ja", "format": "json", "limit": 8, "type": "item"}, timeout=30)
@@ -39,6 +128,16 @@ def claims_all(e, p):
         try: out.append(c["mainsnak"]["datavalue"]["value"])
         except Exception: pass
     return out
+
+def taxon_via_wikipedia(name):
+    pg = wiki_page(name)
+    if not pg or "{{aimai" in (pg.get("wikitext") or "").lower() or "{{曖昧さ回避" in (pg.get("wikitext") or ""): return None, None
+    qid = pg.get("qid")
+    if not qid: return None, pg
+    e = entity_data(qid)
+    if not claim(e, "P225"):
+        return None, pg
+    return e, pg
 
 def pick_taxon(name, aliases):
     """検索結果から「種」の分類群を選ぶ（学名があり、日本語版の記事があるもの）"""
@@ -71,7 +170,9 @@ def commons_image(filename):
         m = ii.get("extmetadata", {})
         g = lambda k: html.unescape(re.sub(r"<[^>]+>", "", m.get(k, {}).get("value", ""))).strip()
         lic = g("LicenseShortName") or g("License")
-        return {"url": ii.get("thumburl") or ii.get("url"), "license": lic, "licenseURL": g("LicenseUrl"), "artist": g("Artist")[:120], "credit": g("Credit")[:120],
+        u = ii.get("thumburl") or ii.get("url") or ""
+        u = u.replace("https://thumb.wikimedia.org/", "https://upload.wikimedia.org/").split("?")[0]
+        return {"url": u, "license": lic, "licenseURL": g("LicenseUrl"), "artist": g("Artist")[:120], "credit": g("Credit")[:120],
                 "descURL": ii.get("descriptionurl"), "mime": ii.get("mime")}
     return None
 
@@ -126,27 +227,34 @@ def fishbase(sci, spec_code=None):
     if m:
         w = float(m.group(1).replace(",", "")); out["maxWeightKg"] = w if m.group(2) == "kg" else w / 1000
     m = re.search(r"Environment:[^A-Za-z]*(?:milieu / climate zone / depth range / distribution range)?\s*(Marine|Freshwater|Brackish)[^.]*?\.", t)
-    env_line = re.search(r"(Marine|Freshwater|Brackish)[;,][^.]{0,120}?(demersal|pelagic|benthopelagic|reef-associated|bathydemersal|bathypelagic|pelagic-neritic|pelagic-oceanic)[^.]*", t)
-    if env_line:
-        s = env_line.group(0)
-        out["environment"] = s[:160]
-        out["waters"] = [w for w in ("Marine", "Freshwater", "Brackish") if w.lower() in s.lower()]
-        out["habitatType"] = env_line.group(2)
+    seg = re.search(r"Environment: milieu / climate zone / depth range / distribution range\s*Ecology\s*(.*?)\s*Distribution\s+(?:Countries|Territories)", t)
+    if seg:
+        s = seg.group(1)
+        out["environment"] = re.sub(r"\(Ref\.[^)]*\)", "", s).strip()[:200]
+        out["waters"] = [w for w in ("Marine", "Freshwater", "Brackish") if re.search(r"\b" + w.lower() + r"\b", s.lower())]
+        h = re.search(r"(bathydemersal|bathypelagic|benthopelagic|demersal|pelagic-neritic|pelagic-oceanic|reef-associated|pelagic)", s)
+        if h: out["habitatType"] = h.group(1)
         d = re.search(r"depth range\s*(\d+)\s*-\s*(\d+)\s*m", s)
         if d: out["depthMinM"] = int(d.group(1)); out["depthMaxM"] = int(d.group(2))
         else:
             d = re.search(r"depth range\s*\?\s*-\s*(\d+)\s*m", s)
             if d: out["depthMaxM"] = int(d.group(1))
-    m = re.search(r"(Tropical|Subtropical|Temperate|Boreal|Polar|Deep-water)\s*;?\s*(?:([\d.]+)°C\s*-\s*([\d.]+)°C)?", t)
-    if m:
-        out["climate"] = m.group(1)
-        if m.group(2): out["tempMinC"] = float(m.group(2)); out["tempMaxC"] = float(m.group(3))
-    m = re.search(r"Distribution\s+Countries\s*\|\s*FAO areas\s*\|\s*Ecosystems\s*\|\s*Occurrences\s*\|\s*Point map\s*\|\s*Introductions\s*\|\s*Faunafri\s*(.*?)(?:Length at first maturity|Size / Weight / Age)", t)
-    if m: out["distribution"] = m.group(1).strip()[:400]
-    m = re.search(r"Short description.*?(?:Morphology \| Morphometrics)\s*(.*?)(?:Biology|Life cycle)", t)
-    if m: out["description"] = m.group(1).strip()[:500]
+        c = re.search(r"(Tropical|Subtropical|Temperate|Boreal|Polar|Deep-water)\s*;?\s*(?:([\d.]+)\s*°C\s*-\s*([\d.]+)\s*°C)?", s)
+        if c:
+            out["climate"] = c.group(1)
+            if c.group(2): out["tempMinC"] = float(c.group(2)); out["tempMaxC"] = float(c.group(3))
+        if re.search(r"anadromous", s): out["migration"] = "anadromous"
+        elif re.search(r"catadromous", s): out["migration"] = "catadromous"
+        elif re.search(r"oceanodromous", s): out["migration"] = "oceanodromous"
+        elif re.search(r"amphidromous", s): out["migration"] = "amphidromous"
+    m = re.search(r"Distribution\s+(?:Countries|Territories)\s*\|\s*FAO areas\s*\|\s*Ecosystems\s*\|\s*Occurrences\s*\|\s*Point map\s*\|\s*Introductions\s*\|\s*Faunafri\s*(.*?)(?:Length at first maturity|Size / Weight / Age)", t)
+    if m: out["distribution"] = re.sub(r"\(Ref\.[^)]*\)", "", m.group(1)).strip()[:400]
+    m = re.search(r"Maturity:\s*L\s*m\s*([\d.]+)", t)
+    if m: out["maturityLengthCm"] = float(m.group(1))
+    m = re.search(r"Short description\s+Identification keys \| Morphology \| Morphometrics\s*(.*?)\s*Biology\s+Glossary", t)
+    if m and len(m.group(1).strip()) > 3: out["description"] = re.sub(r"\(Ref\.[^)]*\)", "", m.group(1)).strip()[:500]
     m = re.search(r"Biology\s+Glossary\s*\(e\.g\. epibenthic\)\s*(.*?)(?:Life cycle and mating behavior|IUCN Red List Status)", t)
-    if m: out["biology"] = m.group(1).strip()[:700]
+    if m: out["biology"] = re.sub(r"\(Ref\.\s*[^)]*\)", "", re.sub(r"Minimum depth from Ref\. \d+ \.", "", m.group(1))).strip()[:700]
     m = re.search(r"Life cycle and mating behavior\s+Maturity \| Reproduction \| Spawning \| Eggs \| Fecundity \| Larvae\s*(.*?)(?:Main reference|IUCN)", t)
     if m and len(m.group(1).strip()) > 10: out["reproduction"] = m.group(1).strip()[:400]
     return out
@@ -158,7 +266,7 @@ def months_from(text):
     """「産卵期は4-6月」「春から初夏」などから月の集合を取る"""
     if not text: return []
     out = set()
-    for m in re.finditer(r"(\d{1,2})\s*[-〜～–-]\s*(\d{1,2})\s*月", text):
+    for m in re.finditer(r"(\d{1,2})\s*(?:月)?\s*(?:[-〜～–-]|から|乃至|ないし)\s*(\d{1,2})\s*月", text):
         a, b = int(m.group(1)), int(m.group(2))
         if 1 <= a <= 12 and 1 <= b <= 12:
             i = a
@@ -194,10 +302,12 @@ def spawning_from(sec):
     return m.group(0) if m else ""
 
 def season_from(sec):
-    for k in ("人間", "利用", "釣り", "漁業", "食"):
-        t = find_section(sec, [k])
-        m = re.search(r"旬[^。]{0,40}", t or "")
-        if m: return m.group(0)
+    """「旬は冬」「晩秋から春にかけてが旬」などの一文"""
+    texts = [find_section(sec, [k]) for k in ("人間", "利用", "釣り", "漁業", "食", "料理")] + [sec.get("lead", "")]
+    for t in texts:
+        if not t: continue
+        m = re.search(r"旬は[^。]{1,40}", t) or re.search(r"[^。]{1,40}(?:が|を)旬[^。]{0,20}", t) or re.search(r"[^。]{1,40}旬[^。]{1,30}", t)
+        if m and re.search(r"[春夏秋冬月]", m.group(0)): return m.group(0)
     return ""
 
 def main():
@@ -223,7 +333,14 @@ def main():
         print(f"[{n}] {name}", flush=True)
         entry = {"id": sp["id"], "name": name, "aliases": sp.get("aliases", []), "groups": sp.get("groups", []), "sources": []}
         try:
-            e = pick_taxon(sp.get("wikidata") or name, sp.get("aliases", []))
+            e, sm = taxon_via_wikipedia(sp.get("wikipedia") or name)
+            if e is None:
+                for alt in [sp.get("wikidata")] + sp.get("aliases", []):
+                    if alt:
+                        e, sm = taxon_via_wikipedia(alt)
+                        if e is not None: break
+            if e is None:
+                e = pick_taxon(sp.get("wikidata") or name, sp.get("aliases", []))
             if e is None:
                 print("   ! Wikidata で見つからず"); entry["missing"] = True; entries.append(entry); continue
             entry["wikidata"] = e["id"]
@@ -231,12 +348,14 @@ def main():
             en = e.get("labels", {}).get("en", {}).get("value")
             if en and en != entry["scientificName"]: entry["englishName"] = en
             fb_id = claim(e, "P938")
-            ja_title = e.get("sitelinks", {}).get("jawiki", {}).get("title")
+            ja_title = e.get("sitelinks", {}).get("jawiki", {}).get("title") or (sm or {}).get("title")
+            wikitext_cached = (sm or {}).get("wikitext") if sm and (sm.get("title") == ja_title) else None
+            fam_tb = taxobox_family(wikitext_cached)
             # 分類（科）：親をたどる（最大 4 段）
-            parent = claim(e, "P171"); fam = None
-            for _ in range(5):
+            parent = claim(e, "P171"); fam = fam_tb
+            for _ in range(0 if fam else 5):
                 if not isinstance(parent, dict): break
-                pe = wd_entities([parent["id"]]).get(parent["id"], {})
+                pe = entity_data(parent["id"])
                 rank = claim(pe, "P105")
                 if isinstance(rank, dict) and rank.get("id") == "Q35409":   # 科
                     fam = pe.get("labels", {}).get("ja", {}).get("value") or claim(pe, "P225"); break
@@ -261,7 +380,11 @@ def main():
                     print("   ! 画像のライセンスが条件外:", info and info.get("license"))
             # Wikipedia 日本語
             if ja_title:
-                text, url = wiki_extract(ja_title)
+                url = "https://ja.wikipedia.org/wiki/" + requests.utils.quote(ja_title, safe="")
+                wt = wikitext_cached or raw_wikitext(ja_title)
+                text = wikitext_to_plain(wt) if wt else ""
+                if not text:
+                    text, url = wiki_extract(ja_title)
                 sec = sections(text)
                 entry["summary"] = clean(sec.get("lead", ""), 600)
                 entry["morphology"] = clean(find_section(sec, ["形態", "特徴"]), 700)
@@ -277,7 +400,7 @@ def main():
             if entry.get("scientificName") and not sp.get("noFishBase"):
                 fb = fishbase(entry["scientificName"], fb_id)
                 if "maxLengthCm" in fb:
-                    for k in ("maxLengthCm", "lengthType", "commonLengthCm", "maxWeightKg", "environment", "waters", "habitatType", "depthMinM", "depthMaxM", "climate", "tempMinC", "tempMaxC", "distribution", "description", "biology", "reproduction"):
+                    for k in ("maxLengthCm", "lengthType", "commonLengthCm", "maxWeightKg", "maturityLengthCm", "environment", "waters", "habitatType", "migration", "depthMinM", "depthMaxM", "climate", "tempMinC", "tempMaxC", "distribution", "description", "biology", "reproduction"):
                         if k in fb: entry[k] = fb[k]
                     entry["sources"].append({"name": "FishBase (Froese & Pauly, CC BY-NC 3.0)", "url": fb["url"]})
                 else:

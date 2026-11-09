@@ -14,13 +14,45 @@ struct GuideView: View {
     @State private var selected: GuideEntry?
     @State private var goCapture = false
     @Environment(\.captureTab) private var captureTab
+    /// 釣った魚 / 全国の魚（F-60）
+    @State private var mode: Mode = .caught
+    @State private var catalog = FishCatalog(entries: [])
+    @State private var query = ""
+    enum Mode: String, CaseIterable { case caught = "釣った魚", all = "全国の魚" }
 
     private let columns = [GridItem(.flexible(), spacing: DS.Spacing.m), GridItem(.flexible(), spacing: DS.Spacing.m), GridItem(.flexible(), spacing: DS.Spacing.m)]
+
+    /// 釣果の魚種名 → 図鑑の id（別名も引く）
+    private var caughtByID: [String: Int] {
+        var out: [String: Int] = [:]
+        for e in entries { if let f = catalog.entry(forSpecies: e.species) { out[f.id, default: 0] += e.count } }
+        return out
+    }
 
     var body: some View {
         VStack(spacing: DS.Spacing.s) {
             header
-            if entries.isEmpty {
+            if mode == .all {
+                FishDatabaseSection(catalog: catalog, caughtIDs: Set(caughtByID.keys), caughtCount: caughtByID, query: $query)
+            } else if !query.isEmpty {
+                // 釣った魚の検索：名前・別名で
+                let hits = entries.filter { e in
+                    let q = FishSearch.normalize(query)
+                    return FishSearch.normalize(e.species).contains(q) || (catalog.entry(forSpecies: e.species)?.searchText.contains(q) ?? false)
+                }
+                if hits.isEmpty {
+                    Spacer(); Text("釣った魚には見つかりません。「全国の魚」で探せます").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary); Spacer()
+                } else {
+                    ScrollView(.vertical, showsIndicators: false) {
+                        LazyVGrid(columns: columns, alignment: .leading, spacing: DS.Spacing.m) {
+                            ForEach(Guide.sorted(hits, by: sort), id: \.species) { e in
+                                GuideTile(entry: e, thumbnail: services.store.thumbnail(catchID: e.bestCatchID)).onTapGesture { selected = e }
+                            }
+                        }
+                        .padding(.bottom, DS.Spacing.l)
+                    }
+                }
+            } else if entries.isEmpty {
                 Spacer()
                 Button { captureTab?() } label: {
                     Image(systemName: "camera.fill").font(.system(size: 44, weight: .semibold)).foregroundStyle(DS.Color.textTertiary)
@@ -48,26 +80,52 @@ struct GuideView: View {
             }
         }
         .onAppear(perform: reload)
+        .task {
+            // 同梱の魚データ（約 200 種）は最初の 1 回だけ裏で読む
+            guard catalog.entries.isEmpty else { return }
+            let c = await Task.detached(priority: .userInitiated) { FishCatalog.bundled() }.value
+            catalog = c
+        }
         .onReceive(NotificationCenter.default.publisher(for: .fogStoreDidChange)) { _ in reload() }
         .sheet(item: $selected) { SpeciesDetailView(entry: $0).onDisappear(perform: reload) }
     }
 
-    /// 上：魚種数と尾数のチップ、右に並び順。下：見出し「図鑑」（確定画像）
+    /// 上：魚種数と尾数のチップ、右に並び順。下：見出し「図鑑」（確定画像）＋ 釣った魚/全国の魚 の切替と検索（F-60）
     private var header: some View {
         VStack(alignment: .leading, spacing: DS.Spacing.s) {
             HStack(spacing: DS.Spacing.s) {
                 countChip(system: "fish.fill", value: entries.count, unit: "種")
                 countChip(system: "heart.fill", value: entries.reduce(0) { $0 + $1.count }, unit: "尾")
+                if !catalog.entries.isEmpty { countChip(system: "books.vertical.fill", value: catalog.entries.count, unit: "種を収録") }
                 Spacer()
-                Menu {
-                    Button("最大サイズ") { sort = .maxLength }
-                    Button("最近") { sort = .recent }
-                    Button("尾数") { sort = .count }
-                } label: {
-                    Image(systemName: "arrow.up.arrow.down").font(.system(size: 17, weight: .semibold)).foregroundStyle(DS.Color.textSecondary).frame(width: 32, height: 32)
+                if mode == .caught {
+                    Menu {
+                        Button("最大サイズ") { sort = .maxLength }
+                        Button("最近") { sort = .recent }
+                        Button("尾数") { sort = .count }
+                    } label: {
+                        Image(systemName: "arrow.up.arrow.down").font(.system(size: 17, weight: .semibold)).foregroundStyle(DS.Color.textSecondary).frame(width: 32, height: 32)
+                    }
                 }
             }
-            Text("図鑑").font(.system(size: 34, weight: .bold)).foregroundStyle(DS.Color.textPrimary)
+            HStack(alignment: .firstTextBaseline) {
+                Text("図鑑").font(.system(size: 34, weight: .bold)).foregroundStyle(DS.Color.textPrimary)
+                Spacer()
+                Picker("", selection: $mode) {
+                    ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented).frame(width: 190)
+            }
+            HStack(spacing: DS.Spacing.xs) {
+                Image(systemName: "magnifyingglass").font(.system(size: 13, weight: .semibold)).foregroundStyle(DS.Color.textTertiary)
+                TextField(mode == .all ? "名前・場所・特性・時期（例: 北海道 根魚、産卵 春）" : "釣った魚を探す", text: $query)
+                    .font(.system(size: 14)).foregroundStyle(DS.Color.textPrimary).submitLabel(.search).autocorrectionDisabled()
+                if !query.isEmpty {
+                    Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(DS.Color.textTertiary) }.buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, DS.Spacing.m).padding(.vertical, 8)
+            .background(DS.Color.panel, in: Capsule())
         }
         .padding(.top, DS.Spacing.s)
     }
