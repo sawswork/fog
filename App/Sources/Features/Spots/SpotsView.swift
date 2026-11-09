@@ -363,10 +363,6 @@ struct SpotsView: View {
             let panelSide = min(geo.size.width - listWidth - DS.Spacing.l * 3, geo.size.height * 0.36)
             VStack(spacing: DS.Spacing.s) {
                 Spacer()
-                if layersOn {
-                    MapTimeBar(hourOffset: $hourOffset, start: layerStart, hours: Self.layerHours)
-                        .frame(height: 40).padding(.horizontal, DS.Spacing.l)
-                }
                 HStack(alignment: .bottom, spacing: DS.Spacing.l) {
                     Spacer(minLength: 0)
                     if let id = selectedID, let card = model.allCards.first(where: { $0.spot.id == id }) {
