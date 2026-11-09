@@ -42,6 +42,7 @@
 | Wikidata | 学名（P225）・科（P171 をたどる）・FishBase ID（P938）・Commons の画像名（P18）・日本語版の記事名 | CC0 | `Special:EntityData/Q….json`（キャッシュが効く） |
 | Wikipedia 日本語版 | 概要・形態・生態・分布・利用の節、産卵期・旬の文 | CC BY-SA 4.0。各種に記事名とリンクを出典として表示 | action API の `prop=revisions`（wikitext）を `mwparserfromhell` で本文化 |
 | Wikimedia Commons | 種の画像 1 枚とライセンス・作者 | CC BY / CC BY-SA / CC0 / パブリックドメインの画像だけ使う（NC・ND は使わない）。作者とライセンスを画像の上と出典欄に表示 | `imageinfo` の `extmetadata`。本体は `upload.wikimedia.org` の 1000 px サムネイルを 900 px・JPEG 82 に |
+| iNaturalist (api.inaturalist.org) | 種の写真（Commons に条件を満たす写真が無い種の第 2 の出典。2026-11-10 開発者の了承） | 研究用等級の観察の写真で CC0 / CC BY / CC BY-SA / CC BY-NC / CC BY-NC-SA のもの（ND は使わない）。作者とライセンス、観察ページへのリンクを表示。本人利用・非商用 | `v1/taxa` で学名から分類群、`default_photo` が条件を満たせばそれ、無ければ `v1/observations?photo_license=…&order_by=votes` の先頭。1 秒 1 回未満 |
 | FishBase (fishbase.se) | 最大全長・よくある全長・成熟サイズ・最大体重・生息環境（海水/淡水/汽水、底生/回遊など）・水深・気候帯・水温・分布（英語）・形態と生態の短文（英語） | CC BY-NC 3.0（Froese & Pauly）。本人利用・非商用のアプリで、各種に出典として表示 | 種の要約ページ（`summary/<SpecCode>`）の本文を正規表現で読む。API（ropensci）は証明書の問題で使わない |
 
 取り込みの流れ（2026-11-09 に「可能な限り全種」へ拡張。開発者「全国には約 4,800 種」）
