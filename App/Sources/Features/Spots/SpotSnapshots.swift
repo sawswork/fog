@@ -52,38 +52,37 @@ struct SpotSnapshotView: View {
     var catchPoints: [Coordinate] = []
     var lossPoints: [Coordinate] = []
     var feedPoints: [Coordinate] = []
-    /// 表示の幅（nil なら写真そのままの 120×76）。詳細パネルでは大きく出す
-    var displayWidth: CGFloat? = nil
+    /// 表示の大きさ（nil なら写真そのままの 120×76）。詳細パネルでは枠に合わせて大きく出す。写真は `fill` で切り、点の位置は同じ比率で写す
+    var displaySize: CGSize? = nil
     @State private var snapshot: MKMapSnapshotter.Snapshot?
 
-    var body: some View {
-        let k = (displayWidth ?? SpotSnapshots.size.width) / SpotSnapshots.size.width
-        // 元の大きさの中身を左上基準で拡大し、外枠を拡大後の大きさに合わせる（中央寄せのままだと右下へはみ出す。2026-11-09 実機フィードバック）
-        content
-            .scaleEffect(k, anchor: .topLeading)
-            .frame(width: SpotSnapshots.size.width * k, height: SpotSnapshots.size.height * k, alignment: .topLeading)
-            .clipped()
-    }
+    private var size: CGSize { displaySize ?? SpotSnapshots.size }
 
-    private var content: some View {
+    var body: some View {
+        let size = self.size
+        // 写真（120×76）を表示の大きさに `fill` で合わせる。拡大率と中央寄せのずれを点の位置にも掛ける
+        let k = max(size.width / SpotSnapshots.size.width, size.height / SpotSnapshots.size.height)
+        let dx = (size.width - SpotSnapshots.size.width * k) / 2, dy = (size.height - SpotSnapshots.size.height * k) / 2
         ZStack(alignment: .topTrailing) {
             if let snapshot {
                 Image(uiImage: snapshot.image).resizable().scaledToFill()
+                    .frame(width: size.width, height: size.height).clipped()
                 ZStack(alignment: .topLeading) {
                     Color.clear
                     ForEach(Array(dots(snapshot).enumerated()), id: \.offset) { _, d in
-                        Circle().fill(d.color).frame(width: d.size, height: d.size)
+                        Circle().fill(d.color).frame(width: d.size * min(1.6, k), height: d.size * min(1.6, k))
                             .overlay(Circle().stroke(DS.Color.background.opacity(0.8), lineWidth: 1))
-                            .position(d.point)
+                            .position(x: d.point.x * k + dx, y: d.point.y * k + dy)
                     }
                 }
+                .frame(width: size.width, height: size.height).clipped()
             } else {
                 DS.Color.surface
             }
             // 地図の北矢印記号（北が上）
             CompassRose().frame(width: 12, height: 22).padding(5)
         }
-        .frame(width: SpotSnapshots.size.width, height: SpotSnapshots.size.height)
+        .frame(width: size.width, height: size.height)
         .clipShape(RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
         .task(id: "\(coordinate.latitude),\(coordinate.longitude)") {
             if let c = SpotSnapshots.shared.cached(for: coordinate) {

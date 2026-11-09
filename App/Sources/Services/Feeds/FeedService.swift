@@ -101,16 +101,20 @@ final class FeedService {
                 let target = resolvedFeeds[url].flatMap(URL.init(string:)) ?? u
                 let data = try await Self.download(target)
                 var result: (title: String, items: [FeedItem])?
-                if let parsed = FeedParser.parse(data, feedURL: url, fetchedAt: now) {
+                // XML の解析（数百 KB〜1 MB）はメインでしない
+                let parsedFeed = await Task.detached(priority: .utility) { FeedParser.parse(data, feedURL: url, fetchedAt: now) }.value
+                if let parsed = parsedFeed {
                     result = (parsed.title, parsed.items); kinds[url] = "rss"
                 } else if let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .shiftJIS) ?? String(data: data, encoding: .japaneseEUC) {
                     // RSS の無いサイト：まずページが指す RSS を探し（1 回だけ余分に読む）、無ければリンク一覧を記事にする（F-45）
-                    if resolvedFeeds[url] == nil, let discovered = HTMLFeed.discoverFeedURLs(html: html, baseURL: u).first,
-                       let d = try? await Self.download(discovered), let parsed = FeedParser.parse(d, feedURL: url, fetchedAt: now) {
+                    let discovered = resolvedFeeds[url] == nil ? await Task.detached(priority: .utility) { HTMLFeed.discoverFeedURLs(html: html, baseURL: u).first }.value : nil
+                    if let discovered, let d = try? await Self.download(discovered),
+                       let parsed = await Task.detached(priority: .utility) { FeedParser.parse(d, feedURL: url, fetchedAt: now) }.value {
                         resolvedFeeds[url] = discovered.absoluteString
                         result = (parsed.title, parsed.items); kinds[url] = "rss"
                     } else {
-                        let list = HTMLFeed.items(html: html, baseURL: u, feedURL: url, feedTitle: nil, pathFilter: filters[url], fetchedAt: now)
+                        let filter = filters[url]
+                        let list = await Task.detached(priority: .utility) { HTMLFeed.items(html: html, baseURL: u, feedURL: url, feedTitle: nil, pathFilter: filter, fetchedAt: now) }.value
                         if list.isEmpty { lastError = "記事リンクが見つからない: \(url)"; continue }
                         result = (list[0].feedTitle, list); kinds[url] = "html"
                     }

@@ -44,7 +44,21 @@ final class HomeViewModel {
     private(set) var rangeEnd: Date = .now
     var scrollTarget: Date?
     /// グラフに出している日（0 = 今日、-1 = 昨日、+n = n 日後）
-    var dayOffset: Int = 0 { didSet { updateDay(); updateWeekOutlook() } }
+    var dayOffset: Int = 0 {
+        didSet {
+            // 表示していない日・週の計算（1 日 約 50 ms）はメインでせず、裏で用意してから切り替える（日送りの固まりの修正。2026-11-09）
+            dayTask?.cancel()
+            let target = dayOffset
+            if dayCache[target] != nil, neededOffsets().allSatisfy({ dayCache[$0] != nil }) { updateDay(); updateWeekOutlook(); return }
+            dayTask = Task { [weak self] in
+                guard let self else { return }
+                await self.ensureDays(self.neededOffsets())
+                guard !Task.isCancelled, self.dayOffset == target else { return }
+                self.updateDay(); self.updateWeekOutlook()
+            }
+        }
+    }
+    private var dayTask: Task<Void, Never>?
     private(set) var dayStart: Date = .now
     private(set) var dayEnd: Date = .now
     private(set) var dayTimeline: [ScorePoint] = []

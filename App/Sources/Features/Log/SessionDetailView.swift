@@ -205,7 +205,6 @@ struct SessionDetailView: View {
                 .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll))
                 .frame(height: 180)
                 .clipShape(RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous))
-                .saturation(0)
                 // タップで全画面の地図（ピンチで拡大。F-55）
                 .overlay(alignment: .bottomTrailing) {
                     Image(systemName: "arrow.up.left.and.arrow.down.right").font(.system(size: 12, weight: .bold)).foregroundStyle(DS.Color.textPrimary)
@@ -387,7 +386,6 @@ struct CatchMapView: View {
                 }
             }
             .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll))
-            .saturation(0)
             .frame(height: 460)
             .clipShape(RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous))
         }
