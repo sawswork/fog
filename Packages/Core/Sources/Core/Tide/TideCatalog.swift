@@ -10,15 +10,16 @@ public struct TideCatalog: Codable, Sendable {
         self.year = year; self.source = source; self.stations = stations
     }
 
-    /// Core に同梱した harmonics.json を読む。無ければ空。
-    public static func bundled() -> TideCatalog {
+    /// Core に同梱した harmonics.json を読む。無ければ空。読むのは 1 回だけ
+    public static func bundled() -> TideCatalog { bundledCache }
+    private static let bundledCache: TideCatalog = {
         guard let url = Bundle.module.url(forResource: "harmonics", withExtension: "json", subdirectory: "Data"),
               let data = try? Data(contentsOf: url),
               let catalog = try? JSONDecoder().decode(TideCatalog.self, from: data) else {
             return TideCatalog(year: 0, source: "", stations: [])
         }
         return catalog
-    }
+    }()
 
     public static func load(from data: Data) throws -> TideCatalog {
         try JSONDecoder().decode(TideCatalog.self, from: data)

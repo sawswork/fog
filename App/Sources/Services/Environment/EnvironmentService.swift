@@ -39,10 +39,12 @@ final class EnvironmentService {
     /// 必要なら気象と海況を取得してキャッシュを更新する。圏外や失敗でも投げない（キャッシュで動く）。
     func refreshIfNeeded(at coordinate: Coordinate, now: Date = .now, force: Bool = false) async {
         let key = ForecastCache.key(for: coordinate)
+        var changed = false
         if force || gate.tryAcquire("weather:" + key, now: now) {
             do {
                 let samples = try await weather.fetch(at: coordinate, from: now.addingTimeInterval(-24 * 3600), to: now.addingTimeInterval(10 * 86_400))
                 cache.mergeWeather(coordinate, samples: samples, fetchedAt: now)
+                changed = true
                 lastError = nil
             } catch {
                 gate.release("weather:" + key)
@@ -55,6 +57,7 @@ final class EnvironmentService {
                 let target = cache.entry(for: coordinate)?.marineGrid ?? coordinate
                 if let result = try await marine.fetch(around: target) {
                     cache.mergeMarine(coordinate, grid: result.grid, samples: result.samples, fetchedAt: now)
+                    changed = true
                 } else {
                     Self.log.notice("marine: no sea grid near \(key, privacy: .public)")
                 }
@@ -64,7 +67,11 @@ final class EnvironmentService {
                 Self.log.error("marine fetch failed: \(error.localizedDescription, privacy: .public)")
             }
         }
-        save()
+        // 変わったときだけ保存する（毎回のホーム再計算で全キャッシュを書き出して 3 秒止まっていた。2026-11-09 診断ログ）
+        if changed {
+            cache.prune(now: now)
+            save()
+        }
     }
 
     // MARK: スナップショット（通信なし）
@@ -136,14 +143,19 @@ final class EnvironmentService {
 
     private func load() {
         guard let storeURL, let data = try? Data(contentsOf: storeURL),
-              let p = try? FogJSON.decode(Persisted.self, from: data) else { return }
+              let p = Perf.measure("予報キャッシュの読み込み", { try? FogJSON.decode(Persisted.self, from: data) }) else { return }
         cache = p.cache
         gate = p.gate
     }
 
+    /// 書き出しは裏で（数千の日付を JSON にする。メインスレッドでは行わない）
     private func save() {
-        guard let storeURL, let data = try? FogJSON.encode(Persisted(cache: cache, gate: gate), pretty: false) else { return }
-        try? data.write(to: storeURL, options: .atomic)
+        guard let storeURL else { return }
+        let persisted = Persisted(cache: cache, gate: gate)
+        Task.detached(priority: .utility) {
+            guard let data = try? FogJSON.encode(persisted, pretty: false) else { return }
+            try? data.write(to: storeURL, options: .atomic)
+        }
     }
 
     /// 設定画面「情報源」用のクレジット。

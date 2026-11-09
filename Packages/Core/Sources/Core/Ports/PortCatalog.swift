@@ -22,13 +22,14 @@ public struct PortCatalog: Sendable {
 
     public init(ports: [Port]) { self.ports = ports }
 
-    /// Core に同梱した ports.json を読む。無ければ空（CI の port-data が埋める）。
-    public static func bundled() -> PortCatalog {
+    /// Core に同梱した ports.json を読む。無ければ空（CI の port-data が埋める）。読むのは 1 回だけ（約 4,000 件の JSON）
+    public static func bundled() -> PortCatalog { bundledCache }
+    private static let bundledCache: PortCatalog = {
         guard let url = Bundle.module.url(forResource: "ports", withExtension: "json", subdirectory: "Data"),
               let data = try? Data(contentsOf: url),
               let ports = try? JSONDecoder().decode([Port].self, from: data) else { return PortCatalog(ports: []) }
         return PortCatalog(ports: ports)
-    }
+    }()
 
     public var isEmpty: Bool { ports.isEmpty }
 

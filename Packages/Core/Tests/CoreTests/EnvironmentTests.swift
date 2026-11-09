@@ -168,4 +168,46 @@ final class EnvironmentTests: XCTestCase {
         let data = try! FogJSON.encode(env)
         XCTAssertEqual(try! FogJSON.decode(EnvSnapshot.self, from: data).precipitationChance ?? -1, 0.4, accuracy: 0.001)
     }
+
+    /// 並んでいなくても、同じ時刻があっても、端でも正しく補間する（二分探索版）
+    func testInterpolateHandlesUnsortedAndEdges() {
+        let t0 = Date(timeIntervalSince1970: 1_792_269_000)
+        let h: (Double) -> Date = { t0.addingTimeInterval($0 * 3600) }
+        let unsorted: [(Date, Double)] = [(h(2), 20), (h(0), 0), (h(1), 10)]
+        XCTAssertEqual(Series.interpolate(unsorted, at: h(0.5))!, 5, accuracy: 1e-9)
+        XCTAssertEqual(Series.interpolate(unsorted, at: h(1))!, 10, accuracy: 1e-9)
+        XCTAssertEqual(Series.interpolate(unsorted, at: h(2.5))!, 20, accuracy: 1e-9)   // 端の値（3 時間以内）
+        XCTAssertNil(Series.interpolate(unsorted, at: h(6)))                            // 遠すぎる
+        XCTAssertEqual(Series.interpolate(unsorted, at: h(-1))!, 0, accuracy: 1e-9)
+        XCTAssertNil(Series.interpolate([], at: h(0)))
+        // 2 点の間が開きすぎ（6 時間超）なら nil
+        XCTAssertNil(Series.interpolate([(h(0), 0), (h(10), 1)], at: h(5)))
+    }
+
+    func testFogJSONDateRoundTripIsFast() throws {
+        let d = Date(timeIntervalSince1970: 1_792_269_000.25)
+        XCTAssertEqual(FogJSON.parse(FogJSON.format(d))!.timeIntervalSince1970, d.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertNotNil(FogJSON.parse("2026-10-18T05:30:00Z"))
+        let start = Date()
+        for _ in 0..<2000 { _ = FogJSON.parse(FogJSON.format(d)) }
+        XCTAssertLessThan(Date().timeIntervalSince(start), 1.0)
+    }
+
+    func testForecastCachePruneDropsOldAndCapsCount() {
+        var cache = ForecastCache()
+        let now = Date(timeIntervalSince1970: 1_792_269_000)
+        for i in 0..<30 {
+            let c = Coordinate(latitude: 41.0 + Double(i) * 0.1, longitude: 140.0)
+            cache.mergeWeather(c, samples: [], fetchedAt: now.addingTimeInterval(-Double(i) * 86_400))
+        }
+        XCTAssertEqual(cache.entries.count, 30)
+        cache.prune(now: now)
+        // 14 日より古い 15 件（i = 15…29）が落ち、残り 15 件（ちょうど 14 日前は残す。24 件の上限内）
+        XCTAssertEqual(cache.entries.count, 15)
+        XCTAssertNotNil(cache.entry(for: Coordinate(latitude: 41.0, longitude: 140.0)))
+        XCTAssertNil(cache.entry(for: Coordinate(latitude: 43.9, longitude: 140.0)))
+        cache.prune(now: now, maxAge: 365 * 86_400, maxEntries: 5)
+        XCTAssertEqual(cache.entries.count, 5)
+        XCTAssertNotNil(cache.entry(for: Coordinate(latitude: 41.0, longitude: 140.0)))   // いちばん新しいものは残る
+    }
 }

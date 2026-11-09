@@ -62,6 +62,18 @@ public struct ForecastCache: Codable, Sendable {
         }
     }
 
+    /// 古い釣り場の予報を落とす（取得から maxAge 以上たったもの。残りも新しい順に maxEntries 件まで）。
+    /// 地図で見た港ごとに 1 件たまり、保存・読み込みが遅くなるため
+    public mutating func prune(now: Date, maxAge: TimeInterval = 14 * 86_400, maxEntries: Int = 24) {
+        func fetchedAt(_ e: Entry) -> Date { max(e.weatherFetchedAt ?? .distantPast, e.marineFetchedAt ?? .distantPast) }
+        let cutoff = now.addingTimeInterval(-maxAge)
+        entries = entries.filter { fetchedAt($0.value) >= cutoff }
+        if entries.count > maxEntries {
+            let keep = entries.sorted { fetchedAt($0.value) > fetchedAt($1.value) }.prefix(maxEntries)
+            entries = Dictionary(uniqueKeysWithValues: keep.map { ($0.key, $0.value) })
+        }
+    }
+
     /// 予報が届いている最後の時刻（ホームのグラフで線を薄くする境界）。
     public func weatherHorizon(for coordinate: Coordinate) -> Date? { entry(for: coordinate)?.weather.last?.at }
     public func marineHorizon(for coordinate: Coordinate) -> Date? { entry(for: coordinate)?.marine.last?.at }

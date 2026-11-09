@@ -247,7 +247,7 @@ final class HomeViewModel {
         // 自分データの重み（削除が即時反映されるよう revision で捨てる）。他の人の魚（F-54）は学習に入れない
         let ownSessions = (try? store.ownSessions()) ?? sessions
         let personal = cache.value("personalModel", store: store) {
-            PersonalModel.learn(from: ownSessions.filter { !$0.isActive }, coordinateOf: { s in spots.first { $0.id == s.spotID }?.coordinate }, timeZone: timeZone)
+            Perf.measure("ホーム: 自分の傾向の学習") { PersonalModel.learn(from: ownSessions.filter { !$0.isActive }, coordinateOf: { s in spots.first { $0.id == s.spotID }?.coordinate }, timeZone: timeZone) }
         }
         let engine = ScoreEngine(personal: personal.total.hours >= 1 ? personal : nil)
         // 通信を待たずに手元のキャッシュで先に描く。取れたら（予報の時刻が変わったら）もう一度計算する
@@ -262,7 +262,7 @@ final class HomeViewModel {
                 if env.cache.entry(for: target)?.weatherFetchedAt != fetchedBefore { await self.refresh() }
             }
         }
-        let current = env.snapshot(at: now, coordinate: coordinate)
+        let current = Perf.measure("ホーム: 現在値") { env.snapshot(at: now, coordinate: coordinate) }
         score = engine.score(ScoreInput(at: now, coordinate: coordinate, env: current, timeZone: timeZone))
         moonAge = current.moonAge ?? MoonCalculator.age(at: now)
 
@@ -295,16 +295,20 @@ final class HomeViewModel {
             calc = DayCalculator(engine: engine, builder: env.builder(for: coordinate), inputs: inputs, tide: tide, coordinate: coordinate, timeZone: timeZone, horizon: forecastHorizon)
             // 右軸の目盛り用：1 か月の潮位の範囲（1 時間おき）
             if let tide {
-                let levels = stride(from: 0, to: end.timeIntervalSince(start), by: 3600).map { tide.level(at: start.addingTimeInterval($0)) }
-                if let lo = levels.min(), let hi = levels.max(), hi > lo { tideRangeCm = lo...hi }
+                Perf.measure("ホーム: 潮位の範囲") {
+                    let levels = stride(from: 0, to: end.timeIntervalSince(start), by: 3600).map { tide.level(at: start.addingTimeInterval($0)) }
+                    if let lo = levels.min(), let hi = levels.max(), hi > lo { tideRangeCm = lo...hi }
+                }
             }
         }
         // 表示に要る日（表示中の日・週行・ウィジェットの 3 日）を裏で先に計算してから画面を更新する（メインスレッドを止めない）
-        await ensureDays(neededOffsets())
-        updateDay()
-        updateWeekOutlook()
+        await Perf.measure("ホーム: 日の計算") { await ensureDays(neededOffsets()) }
+        Perf.measure("ホーム: 日と週の表示") {
+            updateDay()
+            updateWeekOutlook()
+        }
         let todayData = dayData(0)
-        tideExtremes = tide?.extremes(from: now, to: now.addingTimeInterval(3 * 86_400)) ?? []
+        tideExtremes = Perf.measure("ホーム: 次の満干") { tide?.extremes(from: now, to: now.addingTimeInterval(3 * 86_400)) ?? [] }
         timeline = todayData.timeline + dayData(1).timeline + dayData(2).timeline
         sunTimesByDay = daySun.map { [$0] } ?? []
         seaSurfaceTempC = current.seaSurfaceTempC
@@ -320,20 +324,24 @@ final class HomeViewModel {
         let widgetKey = "\(spot?.id.uuidString ?? "current")|\(isRecording)|\(key)|\(services.capture.currentTackle?.rawValue ?? "")"
         if widgetKey != lastWidgetKey || now.timeIntervalSince(lastWidgetPublishAt) > 600 {
             lastWidgetKey = widgetKey; lastWidgetPublishAt = now
-            let widgetEvents = ScoreEvents.upcoming(from: now, count: 16, coordinate: coordinate, timeZone: timeZone, tideExtremes: tideExtremes, wind: wind)
-            WidgetSync.publish(spotName: spot?.name ?? "現在地", timeline: timeline, tide: tide, events: widgetEvents, isRecording: isRecording, tackle: services.capture.currentTackle,
-                               envAt: { env.weatherSnapshot(at: $0, coordinate: coordinate) })
+            Perf.measure("ホーム: ウィジェット") {
+                let widgetEvents = ScoreEvents.upcoming(from: now, count: 16, coordinate: coordinate, timeZone: timeZone, tideExtremes: tideExtremes, wind: wind)
+                WidgetSync.publish(spotName: spot?.name ?? "現在地", timeline: timeline, tide: tide, events: widgetEvents, isRecording: isRecording, tackle: services.capture.currentTackle,
+                                   envAt: { env.weatherSnapshot(at: $0, coordinate: coordinate) })
+            }
         }
         // 通知の予約もウィジェットと同じく 10 分に 1 回（30 秒ごとに予約し直していた）
         if now.timeIntervalSince(lastNotifyScheduleAt) > 600 || widgetKey != lastNotifyKey {
             lastNotifyScheduleAt = now; lastNotifyKey = widgetKey
-            PeakNotifier.schedule(points: timeline, spot: spot, now: now, timeZone: timeZone)
-            // 明日のベストタイム（F-28）：明日 1 日分から
-            let tomorrow = dayData(1)
-            DailyBriefNotifier.schedule(points: tomorrow.timeline, extremes: tomorrow.extremes, spot: spot, coordinate: coordinate,
-                                        airTemperatureAt: { env.weatherSnapshot(at: $0, coordinate: coordinate).airTemperatureC }, now: now, timeZone: timeZone)
-            // 安全通知（F-36）：釣行中だけ予約し直す（帰る時間の設定変更を反映するため）
-            if isRecording { SafetyNotifier.schedule(at: now, coordinate: coordinate, environment: env, timeZone: timeZone) }
+            Perf.measure("ホーム: 通知の予約") {
+                PeakNotifier.schedule(points: timeline, spot: spot, now: now, timeZone: timeZone)
+                // 明日のベストタイム（F-28）：明日 1 日分から
+                let tomorrow = dayData(1)
+                DailyBriefNotifier.schedule(points: tomorrow.timeline, extremes: tomorrow.extremes, spot: spot, coordinate: coordinate,
+                                            airTemperatureAt: { env.weatherSnapshot(at: $0, coordinate: coordinate).airTemperatureC }, now: now, timeZone: timeZone)
+                // 安全通知（F-36）：釣行中だけ予約し直す（帰る時間の設定変更を反映するため）
+                if isRecording { SafetyNotifier.schedule(at: now, coordinate: coordinate, environment: env, timeZone: timeZone) }
+            }
         }
         // 地図レイヤー（F-43）：使ったことがあれば、この釣り場の周りのタイルを先に用意しておく（開いたときに最初からある）
         if MapLayerSettings.usedOnce {
@@ -345,7 +353,7 @@ final class HomeViewModel {
         liveNextTwilight = Self.nextTwilight(now: now, coordinate: coordinate, timeZone: timeZone)
         // 釣果情報（F-27）：取得は裏で、1 行は手元の記事から
         let keywords = feedKeywords(sessions: sessions, spots: allSpots)
-        feedHeadline = services.feeds.headline(keywords: keywords)
+        feedHeadline = Perf.measure("ホーム: 釣果情報の 1 行") { services.feeds.headline(keywords: keywords) }
         let feeds = services.feeds
         Task { [weak self] in
             await feeds.refreshIfNeeded(now: now)
