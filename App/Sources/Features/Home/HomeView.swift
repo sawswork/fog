@@ -413,8 +413,9 @@ struct HomeView: View {
                     .background {
                         // テーマの style.glass：すりガラス＋薄い白い枠（F-58、紫のテーマ）。無ければ従来の面
                         if glass {
+                            // style.glassOpacity で面の濃さ（小さいほど背景が透ける）
                             RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.ultraThinMaterial)
-                                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(DS.Color.panel.opacity(0.35)))
+                                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(DS.Color.panel.opacity(style?.glassOpacity ?? 0.35)))
                                 .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Color.white.opacity(0.35), lineWidth: 1))
                         } else {
                             RoundedRectangle(cornerRadius: 18, style: .continuous).fill(DS.Color.panel)
@@ -622,9 +623,9 @@ struct ForecastChart: View {
             .padding(.vertical, DS.Spacing.s)
             .frame(width: geo.size.width, height: geo.size.height)
             .background {
-                if showsPanel, ThemeStore.shared.theme.spec?.style?.glass == true {
+                if showsPanel, let style = ThemeStore.shared.theme.spec?.style, style.glass == true {
                     RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous).fill(.ultraThinMaterial)
-                        .overlay(RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous).fill(DS.Color.panel.opacity(0.3)))
+                        .overlay(RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous).fill(DS.Color.panel.opacity(style.glassOpacity ?? 0.3)))
                         .overlay(RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous).strokeBorder(Color.white.opacity(0.3), lineWidth: 1))
                 } else if showsPanel {
                     RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous).fill(DS.Color.panel)
