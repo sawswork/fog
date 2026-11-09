@@ -13,6 +13,7 @@ struct AssistantView: View {
     var body: some View {
         let assistant = services.assistant
         VStack(spacing: DS.Spacing.m) {
+            Color.clear.frame(height: 0).onAppear { Perf.mark("相談を開いた") }
             HStack {
                 Text("相談").font(DS.Font.number(20)).foregroundStyle(DS.Color.textPrimary)
                 Spacer()

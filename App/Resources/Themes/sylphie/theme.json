@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "label": "シルフィ（森の魔法陣）",
+  "base": "grimoireDark",
+  "fonts": { "text": "serif", "number": "serif" },
+  "colors": {
+    "accent": "#9BE3B3",
+    "secondary": "#5FD3F3",
+    "sun": "#F2D06B",
+    "textPrimary": "#F3F1E6",
+    "panel": "#0A1C1A73",
+    "scrim": "#00000033"
+  },
+  "home": {
+    "hidesTabBar": true,
+    "scrim": 0.12,
+    "layers": [
+      { "image": "bg_home",   "rect": [0, 0, 1, 1],              "fit": "fill", "z": 0 },
+      { "image": "ring_home", "rect": [0.20, 0.045, 0.60, 0.275],  "fit": "fit",  "z": 30, "opacity": 0.95 },
+      { "image": "char_home", "rect": [0.10, 0.20, 0.80, 0.60],    "fit": "fit",  "z": 40 },
+      { "image": "map_frame", "rect": [0.00, 0.68, 1.00, 0.26],    "fit": "fill", "z": 55, "opacity": 0.9 }
+    ],
+    "blocks": [
+      { "type": "header",        "rect": [0.04, 0.00, 0.92, 0.12], "z": 90 },
+      { "type": "score",         "rect": [0.30, 0.085, 0.40, 0.19], "z": 50 },
+      { "type": "chips",         "rect": [0.06, 0.275, 0.88, 0.065], "z": 60, "opacity": 0.95 },
+      { "type": "chart",         "rect": [0.05, 0.345, 0.44, 0.15], "z": 60, "background": "glass", "padding": 6 },
+      { "type": "table",         "rect": [0.52, 0.345, 0.44, 0.15], "z": 60, "background": "glass", "padding": 6 },
+      { "type": "feedLine",      "rect": [0.08, 0.50, 0.84, 0.03],  "z": 60 },
+      { "type": "recentCatches", "rect": [0.06, 0.535, 0.44, 0.15], "z": 60, "action": "log" },
+      { "type": "week",          "rect": [0.52, 0.545, 0.44, 0.07], "z": 60, "background": "glass", "padding": 4 },
+      { "type": "text",          "rect": [0.74, 0.625, 0.22, 0.05], "z": 60, "text": "FROM EMERALD\nTO WHITE", "style": "caption" },
+      { "type": "miniMap",       "rect": [0.02, 0.70, 0.96, 0.21], "z": 50, "action": "spots" },
+      { "type": "nav",           "rect": [0.00, 0.92, 1.00, 0.08], "z": 100, "style": "compact" }
+    ]
+  }
+}

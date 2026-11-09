@@ -10,6 +10,7 @@ struct FogApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
+        Perf.start()
         let services = AppServices()
         self.services = services
         responder.services = services
@@ -27,7 +28,11 @@ struct FogApp: App {
                     if let link = DeepLink.parse(url) { services.router.pending = link }
                 }
                 .onChange(of: scenePhase) { _, phase in
-                    if phase == .active { Task { await services.didBecomeActive() } }
+                    switch phase {
+                    case .active: Perf.resume(); Task { await services.didBecomeActive() }
+                    case .background: Perf.suspend()
+                    default: break
+                    }
                 }
         }
         .modelContainer(services.persistence.container)

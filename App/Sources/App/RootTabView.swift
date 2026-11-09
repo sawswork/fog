@@ -71,6 +71,7 @@ struct RootTabView: View {
     private var tabBar: some View {
         TabIconsRow(selected: selected) { tab in
             if selected == tab { NotificationCenter.default.post(name: .fogHomeReselected, object: tab == .home ? tab : nil) }
+            Perf.mark("タブ: \(tab)")
             selected = tab
         }
         .padding(.horizontal, DS.Spacing.l)

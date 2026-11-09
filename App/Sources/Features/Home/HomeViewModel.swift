@@ -190,6 +190,10 @@ final class HomeViewModel {
     /// 全部を計算し直す（起動時・30 秒ごと・釣り場切替・ストア変更時）。
     func refresh(now: Date = .now) async {
         guard let services else { return }
+        await Perf.measure("ホームの再計算") { await refreshBody(services: services, now: now) }
+    }
+
+    private func refreshBody(services: AppServices, now: Date) async {
         self.now = now
         let store = services.store
         let env = services.environment

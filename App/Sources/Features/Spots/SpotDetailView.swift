@@ -106,6 +106,7 @@ struct SpotDetailView: View {
         }
         .background(ThemeBackground(name: .bgDetail))
         .onReceive(NotificationCenter.default.publisher(for: .fogStoreDidChange)) { _ in reloadNotes() }
+        .onDisappear { Perf.mark("釣り場詳細を閉じた") }
         .sheet(item: $noteDraft) { draft in
             NoteEditSheet(coordinate: draft.coordinate, existing: nil, placeHint: card.spot.name).presentationDetents([.medium])
         }
@@ -113,8 +114,8 @@ struct SpotDetailView: View {
             NoteEditSheet(coordinate: note.coordinate, existing: note, placeHint: note.placeName ?? card.spot.name).presentationDetents([.medium])
         }
         .onAppear {
-            reload()
-            reloadNotes()
+            Perf.mark("釣り場詳細を開いた")
+            Perf.measure("釣り場詳細の読み込み") { reload(); reloadNotes() }
             detailModel.fixedSpotID = card.spot.id
             detailModel.fixedSpot = card.spot
             detailModel.isEmbedded = true

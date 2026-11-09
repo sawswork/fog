@@ -58,9 +58,11 @@ struct SpotSnapshotView: View {
 
     var body: some View {
         let k = (displayWidth ?? SpotSnapshots.size.width) / SpotSnapshots.size.width
+        // 元の大きさの中身を左上基準で拡大し、外枠を拡大後の大きさに合わせる（中央寄せのままだと右下へはみ出す。2026-11-09 実機フィードバック）
         content
             .scaleEffect(k, anchor: .topLeading)
-            .frame(width: SpotSnapshots.size.width * k, height: SpotSnapshots.size.height * k)
+            .frame(width: SpotSnapshots.size.width * k, height: SpotSnapshots.size.height * k, alignment: .topLeading)
+            .clipped()
     }
 
     private var content: some View {

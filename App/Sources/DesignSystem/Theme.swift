@@ -236,11 +236,19 @@ final class ThemeStore {
         didSet {
             UserDefaults.standard.set(theme.rawValue, forKey: Self.key)
             ThemeAssets.clear()
+            palette = theme.palette; fontDesign = theme.fontDesign; numberDesign = theme.numberDesign
         }
     }
+    /// `DS.Color` / `DS.Font` が毎回読む値。観測の対象から外して（切替は `RootTabView` の `.id(theme)` で全画面を作り直す）、
+    /// 1 フレームに何千回も `theme` 全体（ThemeSpec を含む）を複製しないようにする（2026-11-09 処理速度）
+    @ObservationIgnored private(set) var palette: ThemePalette
+    @ObservationIgnored private(set) var fontDesign: Font.Design
+    @ObservationIgnored private(set) var numberDesign: Font.Design
 
     private init() {
-        theme = AppTheme.find(id: UserDefaults.standard.string(forKey: Self.key) ?? "") ?? .dark
+        let t = AppTheme.find(id: UserDefaults.standard.string(forKey: Self.key) ?? "") ?? .dark
+        theme = t
+        palette = t.palette; fontDesign = t.fontDesign; numberDesign = t.numberDesign
     }
 }
 
@@ -307,6 +315,16 @@ enum ThemeAssets {
     static func image(_ name: Name) -> UIImage? { load(name)?.image }
     static func has(_ name: Name) -> Bool { load(name) != nil }
     static func has(_ name: Name, theme: AppTheme) -> Bool { load(name, theme: theme) != nil }
+
+    /// ファイルがあるかだけ（画像を読み込まない。設定 > テーマ の一覧用。読み込みと透明化は 1 枚数百 ms かかる）
+    static func exists(_ name: Name, theme: AppTheme) -> Bool {
+        guard theme.hasAssets else { return false }
+        let dirs = [directory(for: theme), theme.fallbackFolder.flatMap { directory(named: $0) }].compactMap { $0 }
+        for dir in dirs {
+            for ext in ["png", "jpg", "jpeg", "PNG", "JPG"] where FileManager.default.fileExists(atPath: dir.appendingPathComponent("\(name.rawValue).\(ext)").path) { return true }
+        }
+        return false
+    }
     static func image(_ name: Name, theme: AppTheme) -> UIImage? { load(name, theme: theme)?.image }
 
     static func load(_ name: Name) -> Loaded? { load(name, theme: ThemeStore.shared.theme) }
@@ -325,7 +343,7 @@ enum ThemeAssets {
             for ext in ["png", "jpg", "jpeg", "PNG", "JPG"] {
                 let url = dir.appendingPathComponent("\(raw).\(ext)")
                 if FileManager.default.fileExists(atPath: url.path), let image = UIImage(contentsOfFile: url.path) {
-                    found = prepare(image)
+                    found = Perf.measure("テーマ画像の読み込み \(raw)") { prepare(image) }
                     break search
                 }
             }

@@ -21,6 +21,7 @@ struct SettingsView: View {
                 row("地図レイヤー", system: "square.3.layers.3d", trailing: "\(MapLayerSettings.enabled.count)/\(MapLayer.allCases.count)") { MapLayerSettingsView() }
                 row("情報源", system: "info.circle", trailing: "") { SourcesSettingsView() }
                 row("テーマ", system: "paintpalette", trailing: ThemeStore.shared.theme.label) { ThemeSettingsView() }
+                row("診断", system: "waveform.path.ecg", trailing: "") { DiagnosticsView() }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
@@ -33,7 +34,7 @@ struct SettingsView: View {
                     Button { dismiss() } label: { Image(systemName: "xmark").foregroundStyle(DS.Color.textSecondary) }
                 }
             }
-            .onAppear(perform: reload)
+            .onAppear { Perf.mark("設定を開いた"); reload() }
             .onReceive(NotificationCenter.default.publisher(for: .fogStoreDidChange)) { _ in reload() }
         }
         .preferredColorScheme(ThemeStore.shared.theme.colorScheme)
@@ -554,7 +555,46 @@ struct JudgementSettingsView: View {
             }
             .listStyle(.plain)
         }
-        .task { accuracy = SessionReviewer.accuracy(services: services) }
+        .task { accuracy = Perf.measure("釣れ率の精度の集計") { SessionReviewer.accuracy(services: services) } }
+    }
+}
+
+// MARK: - 診断（処理時間と固まりの記録）
+
+struct DiagnosticsView: View {
+    @State private var entries: [Perf.Entry] = []
+    @State private var copied = false
+
+    var body: some View {
+        SettingsPage(title: "診断") {
+            List {
+                Section {
+                    HStack {
+                        Button {
+                            UIPasteboard.general.string = Perf.report
+                            copied = true
+                        } label: { Label(copied ? "コピーしました" : "記録をコピー", systemImage: "doc.on.doc").font(DS.Font.label).foregroundStyle(DS.Color.accent) }
+                        .buttonStyle(.plain)
+                        Spacer()
+                        Button(role: .destructive) { Perf.clear(); entries = [] } label: { Text("消去").font(DS.Font.caption).foregroundStyle(DS.Color.holiday) }
+                            .buttonStyle(.plain)
+                    }
+                    .settingsRow()
+                    Text("■ はメインスレッドが 400 ms 以上止まった記録（直前にしていた操作つき）、⏱ は 50 ms を超えた処理、✖ は前回の起動が正常に終わらなかった印。固まる・落ちるときは、ここをコピーして知らせてください")
+                        .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary).settingsRow()
+                } header: { SectionLabel(text: "処理時間と固まり（新しい順・最大 300 件）") }
+                Section {
+                    ForEach(entries) { e in
+                        Text(e.line).font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(e.kind == .stall || e.kind == .crash ? DS.Color.holiday : (e.kind == .slow ? DS.Color.sun : DS.Color.textSecondary))
+                            .settingsRow()
+                    }
+                    if entries.isEmpty { Text("記録はまだありません").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary).settingsRow() }
+                }
+            }
+            .listStyle(.plain)
+        }
+        .onAppear { entries = Perf.recent(120) }
     }
 }
 
@@ -806,8 +846,8 @@ struct ThemeSettingsView: View {
                     Section {
                         ForEach(ThemeAssets.Name.allCases, id: \.rawValue) { name in
                             HStack(spacing: DS.Spacing.s) {
-                                Image(systemName: ThemeAssets.has(name, theme: theme) ? "checkmark.circle.fill" : "circle.dashed")
-                                    .foregroundStyle(ThemeAssets.has(name, theme: theme) ? DS.Color.secondary : DS.Color.textTertiary)
+                                Image(systemName: ThemeAssets.exists(name, theme: theme) ? "checkmark.circle.fill" : "circle.dashed")
+                                    .foregroundStyle(ThemeAssets.exists(name, theme: theme) ? DS.Color.secondary : DS.Color.textTertiary)
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(name.rawValue).font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
                                     Text(name.note).font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
@@ -820,8 +860,8 @@ struct ThemeSettingsView: View {
                             .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary).settingsRow()
                         Text(ThemeAssets.diagnostics(for: theme))
                             .font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary).settingsRow()
-                    } header: { SectionLabel(text: "画像（\(ThemeAssets.Name.allCases.filter { ThemeAssets.has($0, theme: theme) }.count)/\(ThemeAssets.Name.allCases.count)）") }
-                    let characters = ThemeAssets.Name.allCases.filter { $0.isCharacter && ThemeAssets.has($0, theme: theme) }
+                    } header: { SectionLabel(text: "画像（\(ThemeAssets.Name.allCases.filter { ThemeAssets.exists($0, theme: theme) }.count)/\(ThemeAssets.Name.allCases.count)）") }
+                    let characters = ThemeAssets.Name.allCases.filter { $0.isCharacter && ThemeAssets.exists($0, theme: theme) }
                     if !characters.isEmpty {
                         Section {
                             ForEach(characters, id: \.rawValue) { name in

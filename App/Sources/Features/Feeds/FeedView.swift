@@ -62,6 +62,7 @@ struct FeedView: View {
         .padding(DS.Spacing.l)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(ThemeBackground(name: .bgDetail))
+        .onAppear { Perf.mark("釣果情報を開いた") }
         .task { await services.party.syncIfNeeded(store: services.store) }
         .fullScreenCover(item: $viewing) { s in
             PhotoViewer(catchItem: Catch(id: s.id, sessionID: s.id, at: s.at, coordinate: s.coordinate, species: s.species, speciesConfidence: 1, lengthCm: s.lengthCm, angler: s.angler),

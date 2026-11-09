@@ -176,6 +176,16 @@ final class CaptureService {
         try? store.upsert(session)
     }
 
+    /// 釣れた位置の手直し（F-59、2026-11-09 開発者の指示）。立ち位置のメッシュとの紐付けは外す（位置が変わったので）
+    func setCoordinate(catchID: UUID, coordinate: Coordinate) {
+        guard coordinate.isPlausible, let all = try? store.sessions(), var session = all.first(where: { $0.catches.contains { $0.id == catchID } }),
+              let index = session.catches.firstIndex(where: { $0.id == catchID }) else { return }
+        session.catches[index].coordinate = coordinate
+        session.catches[index].pointID = nil
+        try? store.upsert(session)
+        onCatchSaved?(session.catches[index])
+    }
+
     /// 釣った人の変更（F-54）
     func setAngler(catchID: UUID, angler: String?) {
         guard let all = try? store.sessions(), var session = all.first(where: { $0.catches.contains { $0.id == catchID } }),

@@ -104,23 +104,30 @@ final class AppServices {
 }
 
 /// 通知のアクション（停止・破棄）を受ける。
-final class NotificationResponder: NSObject, UNUserNotificationCenterDelegate {
+/// デリゲートはどのスレッドで呼ばれるか決まっていないので、ここでは何も触らず MainActor へ渡してから `AppServices` を使う
+/// （2026-11-09：通知のタイミングで落ちる報告への対処。完了ハンドラ型にして、必ず呼び終える）
+final class NotificationResponder: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
     weak var services: AppServices?
 
-    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
-        guard let services, let idString = response.notification.request.content.userInfo["sessionID"] as? String,
-              let sessionID = UUID(uuidString: idString) else { return }
-        switch response.actionIdentifier {
-        case SessionNotifications.stopAction:
-            await services.detection.stopNow()
-        case SessionNotifications.discardAction:
-            await MainActor.run { services.detection.discard(sessionID: sessionID) }
-        default:
-            break
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        let action = response.actionIdentifier
+        let idString = response.notification.request.content.userInfo["sessionID"] as? String
+        Task { @MainActor [weak self] in
+            defer { completionHandler() }
+            Perf.mark("通知を開いた: \(action)")
+            guard let services = self?.services, let idString, let sessionID = UUID(uuidString: idString) else { return }
+            switch action {
+            case SessionNotifications.stopAction:
+                await services.detection.stopNow()
+            case SessionNotifications.discardAction:
+                services.detection.discard(sessionID: sessionID)
+            default:
+                break
+            }
         }
     }
 
-    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        [.banner, .sound]
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .sound])
     }
 }
