@@ -80,6 +80,59 @@ public struct FishEntry: Codable, Identifiable, Hashable, Sendable {
         self.distributionJa = distributionJa; self.ecology = ecology; self.sources = sources
     }
 
+    enum CodingKeys: String, CodingKey {
+        case id, name, aliases, groups, scientificName, englishName, nameRomaji, nameEstimated, family, familySci, order, status, image, imageCredit
+        case summary, morphology, ecology, distributionJa, usage, spawning, spawningMonths, seasonNote, seasonMonths
+        case maxLengthCm, lengthType, commonLengthCm, maxWeightKg, environment, waters, habitatType, depthMinM, depthMaxM, climate, tempMinC, tempMaxC
+        case distribution, description, biology, reproduction, sources, missing
+    }
+
+    /// 無いキーは空として読む（出典や別名が無い種は JSON にキーが無い。1 件でも読めないと全体が空になるため）
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? id
+        aliases = try c.decodeIfPresent([String].self, forKey: .aliases) ?? []
+        groups = try c.decodeIfPresent([String].self, forKey: .groups) ?? []
+        scientificName = try c.decodeIfPresent(String.self, forKey: .scientificName)
+        englishName = try c.decodeIfPresent(String.self, forKey: .englishName)
+        nameRomaji = try c.decodeIfPresent(String.self, forKey: .nameRomaji)
+        nameEstimated = try c.decodeIfPresent(Bool.self, forKey: .nameEstimated)
+        family = try c.decodeIfPresent(String.self, forKey: .family)
+        familySci = try c.decodeIfPresent(String.self, forKey: .familySci)
+        order = try c.decodeIfPresent(String.self, forKey: .order)
+        status = try c.decodeIfPresent(String.self, forKey: .status)
+        image = try c.decodeIfPresent(String.self, forKey: .image)
+        imageCredit = try? c.decodeIfPresent(ImageCredit.self, forKey: .imageCredit)
+        summary = try c.decodeIfPresent(String.self, forKey: .summary)
+        morphology = try c.decodeIfPresent(String.self, forKey: .morphology)
+        ecology = try c.decodeIfPresent(String.self, forKey: .ecology)
+        distributionJa = try c.decodeIfPresent(String.self, forKey: .distributionJa)
+        usage = try c.decodeIfPresent(String.self, forKey: .usage)
+        spawning = try c.decodeIfPresent(String.self, forKey: .spawning)
+        spawningMonths = try c.decodeIfPresent([Int].self, forKey: .spawningMonths)
+        seasonNote = try c.decodeIfPresent(String.self, forKey: .seasonNote)
+        seasonMonths = try c.decodeIfPresent([Int].self, forKey: .seasonMonths)
+        maxLengthCm = try c.decodeIfPresent(Double.self, forKey: .maxLengthCm)
+        lengthType = try c.decodeIfPresent(String.self, forKey: .lengthType)
+        commonLengthCm = try c.decodeIfPresent(Double.self, forKey: .commonLengthCm)
+        maxWeightKg = try c.decodeIfPresent(Double.self, forKey: .maxWeightKg)
+        environment = try c.decodeIfPresent(String.self, forKey: .environment)
+        waters = try c.decodeIfPresent([String].self, forKey: .waters)
+        habitatType = try c.decodeIfPresent(String.self, forKey: .habitatType)
+        depthMinM = try? c.decodeIfPresent(Double.self, forKey: .depthMinM).map { Int($0) }
+        depthMaxM = try? c.decodeIfPresent(Double.self, forKey: .depthMaxM).map { Int($0) }
+        climate = try c.decodeIfPresent(String.self, forKey: .climate)
+        tempMinC = try c.decodeIfPresent(Double.self, forKey: .tempMinC)
+        tempMaxC = try c.decodeIfPresent(Double.self, forKey: .tempMaxC)
+        distribution = try c.decodeIfPresent(String.self, forKey: .distribution)
+        description = try c.decodeIfPresent(String.self, forKey: .description)
+        biology = try c.decodeIfPresent(String.self, forKey: .biology)
+        reproduction = try c.decodeIfPresent(String.self, forKey: .reproduction)
+        sources = (try? c.decodeIfPresent([Source].self, forKey: .sources)) ?? []
+        missing = try c.decodeIfPresent(Bool.self, forKey: .missing)
+    }
+
     /// 海・淡水・汽水の日本語
     public var watersJa: [String] {
         (waters ?? []).compactMap { w in
