@@ -33,8 +33,13 @@ targets:
       - path: App/Resources
         excludes:
           - "Themes/**"
+          - "Fish/**"
       # テーマ画像（F-49）。フォルダ参照としてそのままバンドルに入る（Themes/<theme>/<name>.png）
       - path: App/Resources/Themes
+        type: folder
+        buildPhase: resources
+      # 図鑑の魚の画像（F-60）。数千枚になるのでフォルダ参照（Fish/<id>.jpg）
+      - path: App/Resources/Fish
         type: folder
         buildPhase: resources
     dependencies:
