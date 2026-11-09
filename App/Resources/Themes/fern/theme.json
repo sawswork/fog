@@ -17,13 +17,14 @@
     "textSecondary": "#C6B8D6",
     "textTertiary": "#8F82A3",
     "faded": "#4A3F5C",
-    "panel": "#2A1F3A80",
+    "panel": "#2A1F3A4D",
     "scrim": "#0B081033"
   },
   "style": {
     "chipTilt": -4,
     "chipPerspective": 16,
     "glass": true,
+    "glassOpacity": 0.10,
     "chipOrnament": "✦",
     "captureSymbol": "moon.fill"
   }
