@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import PhotosUI
 import Core
 
 /// ログ（§4）。上半分が釣行、下半分が分析。どちらも横スクロールのカードで 1 画面に収める。
@@ -10,6 +11,10 @@ struct LogView: View {
     @State private var analysis: AnalysisKind?
     @State private var reportSession: Core.Session?
     @State private var deleting: Core.Session?
+    /// 写真の手動取り込み（F-61）
+    @State private var pickedPhotos: [PhotosPickerItem] = []
+    @State private var importing = false
+    @State private var importMessage: String?
 
     enum AnalysisKind: String, Identifiable { case hour, tide, spot, map; var id: String { rawValue } }
 
@@ -43,6 +48,21 @@ struct LogView: View {
             .padding(DS.Spacing.l).frame(maxWidth: .infinity, alignment: .leading).background(ThemeBackground(name: .bgDetail))
             .presentationDetents([.medium, .large])
         }
+        .onChange(of: pickedPhotos) { _, items in
+            guard !items.isEmpty else { return }
+            let ids = items.compactMap(\.itemIdentifier)
+            pickedPhotos = []
+            importing = true
+            Task {
+                let r = await services.photoImport.importAssets(identifiers: ids)
+                importing = false
+                importMessage = r.imported == 0 ? "取り込める写真がありませんでした（取り込み済みか、読めない写真）" : "\(r.imported) 枚を取り込みました" + (r.measured > 0 ? "（メジャーから \(r.measured) 枚のサイズを判定）" : "") + (r.skipped > 0 ? "・\(r.skipped) 枚は飛ばしました" : "")
+                model.refresh()
+            }
+        }
+        .alert("写真の取り込み", isPresented: Binding(get: { importMessage != nil }, set: { if !$0 { importMessage = nil } })) {
+            Button("OK", role: .cancel) { importMessage = nil }
+        } message: { Text(importMessage ?? "") }
         .confirmationDialog("この釣行を削除", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
             Button("削除", role: .destructive) { if let d = deleting { model.delete(d) }; deleting = nil }
             Button("キャンセル", role: .cancel) { deleting = nil }
@@ -53,6 +73,15 @@ struct LogView: View {
     private var header: some View {
         HStack(alignment: .bottom) {
             Text("ログ").font(.system(size: 34, weight: .bold)).foregroundStyle(DS.Color.textPrimary)
+            // 写真を選んで取り込む（F-61）。標準カメラで撮った過去の写真も釣果にできる。メジャーが写っていればサイズも入る
+            PhotosPicker(selection: $pickedPhotos, maxSelectionCount: 20, matching: .images, photoLibrary: .shared()) {
+                Group {
+                    if importing { ProgressView().tint(DS.Color.textSecondary) } else { Image(systemName: "photo.badge.plus").font(.system(size: 17, weight: .semibold)) }
+                }
+                .foregroundStyle(DS.Color.textSecondary).frame(width: 32, height: 32)
+            }
+            .disabled(importing)
+            .padding(.bottom, 6)
             Spacer()
             HStack(spacing: DS.Spacing.l) {
                 stat(model.sessionCount, "釣行")
