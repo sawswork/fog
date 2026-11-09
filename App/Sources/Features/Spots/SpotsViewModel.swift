@@ -26,8 +26,10 @@ final class SpotsViewModel {
     }
     private var catalogPorts: [Card] = []
     private var searchPorts: [Card] = []
-    /// 現在地（`LocationService` の最新の位置。地図を開いている間は前面の更新で動く）
-    var currentLocation: Coordinate? { services?.location.lastFix?.coordinate }
+    /// 画面が使う現在地。位置は 1 秒に 1 回届くが、20 m 動いたときだけ更新する（毎回 70 個の注釈を作り直していたのを止める。2026-11-09）
+    private(set) var displayLocation: Coordinate?
+    private var locationTask: Task<Void, Never>?
+    var currentLocation: Coordinate? { displayLocation }
     private var services: AppServices?
     /// 車での所要時間・距離（MapKit の経路検索。F-56）。鍵は「出発地（500 m 単位）→釣り場」
     private(set) var etas: [String: DriveETA] = [:]
@@ -73,7 +75,18 @@ final class SpotsViewModel {
     private var feedPinsTask: Task<Void, Never>?
 
     func attach(_ services: AppServices) {
+        let first = self.services == nil
         self.services = services
+        if displayLocation == nil, let c = services.location.lastFix?.coordinate, c.isPlausible { displayLocation = c }
+        if first {
+            locationTask = Task { [weak self] in
+                for await fix in services.location.fixes() {
+                    guard let self, fix.coordinate.isPlausible, fix.horizontalAccuracyM <= 100 else { continue }
+                    if let cur = self.displayLocation, Geo.distanceMeters(cur, fix.coordinate) < 20 { continue }
+                    self.displayLocation = fix.coordinate
+                }
+            }
+        }
         refresh()
     }
 
@@ -110,6 +123,8 @@ final class SpotsViewModel {
         guard region.span.latitudeDelta < 1.5 else { return }
         // 同梱の港データ（国土数値情報）を先に置く。通信なしで確実に出る
         catalogCandidates(in: region)
+        // 同梱データで十分に出ているときは地図検索（通信・注釈の増加）をしない
+        if catalogPorts.count >= 20 { return }
         if let last = lastSearchedRegion {
             let moved = Geo.distanceMeters(Coordinate(latitude: last.center.latitude, longitude: last.center.longitude),
                                            Coordinate(latitude: region.center.latitude, longitude: region.center.longitude))
@@ -145,7 +160,7 @@ final class SpotsViewModel {
         let engine = scoreEngine()
         let now = Date()
         var out: [Card] = []
-        for port in portCatalog.ports(latitude: latR, longitude: lonR, limit: 60) {
+        for port in portCatalog.ports(latitude: latR, longitude: lonR, limit: 40) {
             let c = port.coordinate
             if existing.contains(where: { Geo.distanceMeters($0.coordinate, c) < 300 }) { continue }
             let key = "\(port.name)@\(Int(c.latitude * 1000)),\(Int(c.longitude * 1000))"

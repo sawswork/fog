@@ -242,9 +242,8 @@ struct SpotsView: View {
                 if let r = raster, !r.box.contains(region: context.region) { rebuildRaster() } else if raster == nil { rebuildRaster() }
             }
         }
+        // モノトーンは地図の色調（ダークの muted）に任せる。saturation/contrast のフィルタは地図全体を毎フレーム描き直させて重かった（2026-11-09）
         .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false))
-        .saturation(0)
-        .contrast(0.9)
         .mapControlVisibility(.hidden)
     }
 
@@ -361,7 +360,7 @@ struct SpotsView: View {
     private var cards: some View {
         GeometryReader { geo in
             let listWidth: CGFloat = 150
-            let panelSide = min(geo.size.width - listWidth - DS.Spacing.l * 3, geo.size.height * 0.40)
+            let panelSide = min(geo.size.width - listWidth - DS.Spacing.l * 3, geo.size.height * 0.36)
             VStack(spacing: DS.Spacing.s) {
                 Spacer()
                 if layersOn {
@@ -373,7 +372,7 @@ struct SpotsView: View {
                     if let id = selectedID, let card = model.allCards.first(where: { $0.spot.id == id }) {
                         SpotDetailPanel(card: card, side: panelSide,
                                         feedPoints: feedPinsOn ? feedPins.map(\.coordinate).filter { Geo.distanceMeters($0, card.spot.coordinate) < 1200 } : [],
-                                        distanceM: model.currentLocation.map { Geo.distanceMeters($0, card.spot.coordinate) },
+                                        distanceM: card.distanceM,
                                         eta: model.eta(for: card.spot), routeOn: model.routeTarget?.id == card.spot.id,
                                         onSelectHome: { model.selectForHome(card.spot) },
                                         onRegister: { model.register(card) },
@@ -398,8 +397,7 @@ struct SpotsView: View {
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(spacing: 4) {
                     ForEach(model.allCards) { card in
-                        SpotListRow(card: card, selected: selectedID == card.spot.id,
-                                    distanceM: model.currentLocation.map { Geo.distanceMeters($0, card.spot.coordinate) }, eta: model.eta(for: card.spot))
+                        SpotListRow(card: card, selected: selectedID == card.spot.id, distanceM: card.distanceM, eta: model.eta(for: card.spot))
                             .id(card.spot.id)
                             .onTapGesture { selectedID = selectedID == card.spot.id ? nil : card.spot.id }
                     }
@@ -466,11 +464,14 @@ struct SpotDetailPanel: View {
     var onClose: () -> Void = {}
 
     var body: some View {
+        // 写真の高さは枠から逆算する（名前・数字・ボタンの分を引く）。中身が枠を超えて上下にはみ出していた（2026-11-09 実機フィードバック）
+        let imageWidth = side - DS.Spacing.m * 2
+        let imageHeight = max(60, side - DS.Spacing.m * 2 - 22 - 16 - 30 - 6 * 3)
         VStack(alignment: .leading, spacing: 6) {
             ZStack(alignment: .topTrailing) {
                 if card.spot.coordinate.isPlausible {
                     SpotSnapshotView(coordinate: card.spot.coordinate, catchPoints: card.catchPoints, lossPoints: card.lossPoints, feedPoints: feedPoints,
-                                     displayWidth: side - DS.Spacing.m * 2)
+                                     displaySize: CGSize(width: imageWidth, height: imageHeight))
                 }
                 Button(action: onClose) {
                     Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
@@ -480,11 +481,11 @@ struct SpotDetailPanel: View {
                 .padding(4)
             }
             HStack(alignment: .firstTextBaseline, spacing: DS.Spacing.s) {
-                Text(card.spot.name).font(.system(size: 15, weight: .bold)).foregroundStyle(DS.Color.textPrimary).lineLimit(2).minimumScaleFactor(0.75)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text(card.spot.name).font(.system(size: 15, weight: .bold)).foregroundStyle(DS.Color.textPrimary).lineLimit(1).minimumScaleFactor(0.6)
                 Spacer(minLength: 0)
                 Text("\(card.score)").font(DS.Font.score(24)).foregroundStyle(card.score >= 70 ? DS.Color.accent : DS.Color.textPrimary)
             }
+            .frame(height: 22)
             HStack(spacing: DS.Spacing.s) {
                 if card.isCandidate {
                     Text("未登録の漁港").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
@@ -532,7 +533,8 @@ struct SpotDetailPanel: View {
             }
         }
         .padding(DS.Spacing.m)
-        .frame(width: side, height: side)
+        .frame(width: side, height: side, alignment: .top)
+        .clipped()
         .background(DS.Color.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous))
         .contentShape(Rectangle())
         .onTapGesture(perform: onDetail)

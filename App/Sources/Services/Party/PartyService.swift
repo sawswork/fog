@@ -1,5 +1,7 @@
 import Foundation
 import CloudKit
+import Photos
+import UIKit
 import Core
 import os
 
@@ -34,6 +36,16 @@ final class PartyService {
         try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
         return d
     }
+    /// 取りに行った写真本体（長辺 1,600 px の JPEG）。全画面で見たときだけ取る
+    private var photosDir: URL {
+        let d = FogShared.containerURL.appendingPathComponent("party-photos", isDirectory: true)
+        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        return d
+    }
+    /// 写真本体の最大辺（px）と JPEG の画質。1 枚 300〜600 KB 程度
+    static let photoMaxPixel: CGFloat = 1600
+    static let photoQuality: CGFloat = 0.8
+    private var photoInFlight: Set<UUID> = []
 
     init() {
         container = PersistenceController.configuredCloudKitContainerIdentifier().map { CKContainer(identifier: $0) }
@@ -57,6 +69,35 @@ final class PartyService {
     /// 仲間の投稿のサムネイル（取得済みのものだけ）
     func thumbnail(for id: UUID) -> Data? { try? Data(contentsOf: thumbsDir.appendingPathComponent(id.uuidString + ".jpg")) }
 
+    /// 取得済みの写真本体（無ければ nil。`fetchPhoto` で取りに行く）
+    func cachedPhoto(for id: UUID) -> Data? { try? Data(contentsOf: photosDir.appendingPathComponent(id.uuidString + ".jpg")) }
+
+    /// 仲間の釣果の写真本体を取りに行く（全画面で見たときだけ。取れたら端末に残し、次からは通信しない）
+    func fetchPhoto(for id: UUID) async -> Data? {
+        if let d = cachedPhoto(for: id) { return d }
+        guard let db = container?.publicCloudDatabase, !photoInFlight.contains(id) else { return nil }
+        photoInFlight.insert(id)
+        defer { photoInFlight.remove(id) }
+        do {
+            let result = try await db.records(for: [CKRecord.ID(recordName: id.uuidString)], desiredKeys: ["photo"])
+            guard case .success(let record)? = result[CKRecord.ID(recordName: id.uuidString)],
+                  let asset = record["photo"] as? CKAsset, let url = asset.fileURL, let data = try? Data(contentsOf: url) else { return nil }
+            try? data.write(to: photosDir.appendingPathComponent(id.uuidString + ".jpg"), options: .atomic)
+            return data
+        } catch {
+            Self.log.notice("party photo fetch failed: \(error.localizedDescription, privacy: .public)")
+            lastError = Self.describe(error)
+            return nil
+        }
+    }
+
+    /// 写真本体（長辺 1,600 px の JPEG）をフォトライブラリから作る。無ければ nil
+    private func photoJPEG(localIdentifier: String?) async -> Data? {
+        guard let localIdentifier, let asset = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil).firstObject,
+              let cg = await PhotoLibraryService().image(for: asset, maxPixel: Self.photoMaxPixel) else { return nil }
+        return UIImage(cgImage: cg).jpegData(compressionQuality: Self.photoQuality)
+    }
+
     // MARK: 同期
 
     /// 未送信の釣果を送り、全員の釣果を取る。30 分に 1 回（`force` で無視）
@@ -74,7 +115,7 @@ final class PartyService {
     /// 釣果の保存直後：その 1 件だけすぐ送る
     func upload(_ item: Catch, store: FogStore) async {
         guard isAvailable, let shared = shared(from: item, store: store) else { return }
-        await upload([shared], store: store)
+        await upload([(shared, item.photoLocalIdentifier ?? item.photoLocalIdentifiers.first)], store: store)
     }
 
     /// 釣果の削除：公開 DB からも消す（圏外なら次の同期で）
@@ -94,34 +135,46 @@ final class PartyService {
         return SharedCatch.make(from: item, ownName: AnglerSettings.ownName, device: AnglerSettings.deviceID, spotName: spotName)
     }
 
-    private func contentKey(_ s: SharedCatch) -> String {
-        "\(s.angler)|\(s.species)|\(s.lengthCm ?? -1)|\(s.at.timeIntervalSince1970)|\(s.spotName)|\(s.coordinate.latitude),\(s.coordinate.longitude)"
+    /// 内容の鍵。写真本体を付けるようになった（v2）ので、以前に送った分は一度だけ送り直す
+    private func contentKey(_ s: SharedCatch, photo: String?) -> String {
+        "v2|\(s.angler)|\(s.species)|\(s.lengthCm ?? -1)|\(s.at.timeIntervalSince1970)|\(s.spotName)|\(s.coordinate.latitude),\(s.coordinate.longitude)|\(photo ?? "")"
     }
 
     private func uploadPending(store: FogStore) async {
         let sessions = (try? store.sessions()) ?? []
-        var todo: [SharedCatch] = []
+        var todo: [(SharedCatch, String?)] = []
         for s in sessions {
             for c in s.catches {
                 guard let shared = shared(from: c, store: store) else { continue }
-                if uploaded[shared.id.uuidString] != contentKey(shared) { todo.append(shared) }
+                let photo = c.photoLocalIdentifier ?? c.photoLocalIdentifiers.first
+                if uploaded[shared.id.uuidString] != contentKey(shared, photo: photo) { todo.append((shared, photo)) }
             }
         }
         await flushDeletes()
         guard !todo.isEmpty else { return }
-        // 1 回に 50 件まで（1 回の変更操作の上限は 400 だが、サムネイルの大きさを考えて小さく）
-        for chunk in stride(from: 0, to: todo.count, by: 50).map({ Array(todo[$0..<min($0 + 50, todo.count)]) }) {
+        // 1 回に 10 件まで（写真本体が 1 枚 数百 KB 付くため）
+        for chunk in stride(from: 0, to: todo.count, by: 10).map({ Array(todo[$0..<min($0 + 10, todo.count)]) }) {
             await upload(chunk, store: store)
         }
     }
 
-    private func upload(_ list: [SharedCatch], store: FogStore) async {
+    private func upload(_ list: [(SharedCatch, String?)], store: FogStore) async {
         guard let db = container?.publicCloudDatabase else { return }
         var records: [CKRecord] = []
         var tempFiles: [URL] = []
-        for s in list {
+        var keys: [String: String] = [:]
+        for (s, photoID) in list {
             let record = CKRecord(recordType: Self.recordType, recordID: CKRecord.ID(recordName: s.id.uuidString))
             guard let payload = try? FogJSON.encode(s, pretty: false) else { continue }
+            keys[s.id.uuidString] = contentKey(s, photo: photoID)
+            // 写真本体（長辺 1,600 px）。相手は全画面で見たときだけ取りに来る
+            if let jpeg = await photoJPEG(localIdentifier: photoID) {
+                let url = FileManager.default.temporaryDirectory.appendingPathComponent("party-photo-\(s.id.uuidString).jpg")
+                if (try? jpeg.write(to: url, options: .atomic)) != nil {
+                    record["photo"] = CKAsset(fileURL: url)
+                    tempFiles.append(url)
+                }
+            }
             record["payload"] = String(decoding: payload, as: UTF8.self)
             record["at"] = s.at
             record["updatedAt"] = s.updatedAt
@@ -144,8 +197,8 @@ final class PartyService {
             for (id, r) in result.saveResults {
                 switch r {
                 case .success:
-                    if let s = list.first(where: { $0.id.uuidString == id.recordName }) {
-                        uploaded[id.recordName] = contentKey(s)
+                    if let s = list.first(where: { $0.0.id.uuidString == id.recordName })?.0 {
+                        uploaded[id.recordName] = keys[id.recordName]
                         items.removeAll { $0.id == s.id }
                         items.append(s)
                     }
@@ -189,7 +242,9 @@ final class PartyService {
         var fetched: [SharedCatch] = []
         var assets: [UUID: URL] = [:]
         do {
-            var result = try await db.records(matching: query, inZoneWith: nil, desiredKeys: nil, resultsLimit: 200)
+            // 写真本体（photo）は一覧では取らない（全画面で見たときだけ）
+            let keys = ["payload", "at", "updatedAt", "angler", "device", "species", "thumbnail"]
+            var result = try await db.records(matching: query, inZoneWith: nil, desiredKeys: keys, resultsLimit: 200)
             var pages = 0
             while true {
                 for (_, r) in result.matchResults {
@@ -200,7 +255,7 @@ final class PartyService {
                 }
                 pages += 1
                 guard let cursor = result.queryCursor, pages < 10 else { break }
-                result = try await db.records(continuingMatchFrom: cursor, desiredKeys: nil, resultsLimit: 200)
+                result = try await db.records(continuingMatchFrom: cursor, desiredKeys: keys, resultsLimit: 200)
             }
         } catch {
             if let ck = error as? CKError, ck.code == .unknownItem {
@@ -221,8 +276,10 @@ final class PartyService {
         }
         // 消えた仲間の投稿のサムネイルを片づける
         let alive = Set(fetched.map { $0.id.uuidString + ".jpg" })
-        if let files = try? FileManager.default.contentsOfDirectory(atPath: thumbsDir.path) {
-            for f in files where !alive.contains(f) { try? FileManager.default.removeItem(at: thumbsDir.appendingPathComponent(f)) }
+        for dir in [thumbsDir, photosDir] {
+            if let files = try? FileManager.default.contentsOfDirectory(atPath: dir.path) {
+                for f in files where !alive.contains(f) { try? FileManager.default.removeItem(at: dir.appendingPathComponent(f)) }
+            }
         }
         items = fetched
         lastError = nil

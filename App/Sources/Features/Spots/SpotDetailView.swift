@@ -208,7 +208,6 @@ struct SpotDetailView: View {
                 }
             }
             .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll))
-            .saturation(0)
             .onTapGesture(coordinateSpace: .local) { point in
                 guard placingNote, let c = proxy.convert(point, from: .local) else { return }
                 placingNote = false

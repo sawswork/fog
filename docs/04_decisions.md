@@ -3,6 +3,17 @@
 新しい決定は上に追加する。形式：日付 / 決定 / 理由 / 影響範囲。
 Claude Code が設計判断で迷ったら、まずここに「提案」として書き、PR で問う。
 
+## 2026-11-09 L36 速度の改善 2
+
+| 決定 | 理由 | 影響 |
+| --- | --- | --- |
+| 仲間との共有に写真本体（長辺 1,600 px・JPEG 0.8、1 枚 300〜600 KB）を付ける。一覧はサムネイルのまま、全画面で見たときだけ本体を取りに行き、端末に残す。「写真に保存」でその端末のフォトライブラリへ | 開発者「アプリ上でだけ見れて、必要な時に保存できればいい」。通信量は見たときだけ。公開 DB の無料枠（10 GB〜）で 2 人分なら十分 | `PartyService.fetchPhoto / photoJPEG`, `PhotoViewer(sharedID:)`。開発者の作業：`SharedCatch` に `photo` が増えるので CloudKit Console で Production へ再配備 |
+| 地図のモノトーンは `saturation(0)` などのフィルタではなく、ダークの muted 地図の色調に任せる | フィルタは MapKit の地図全体を毎フレーム別描きさせ、パン・ズームと画面の出入りを重くしていた | `SpotsView`, `SessionDetailView`, `CatchMapView`, `SpotDetailView` |
+| 釣り場画面が使う現在地は 20 m 動いたときだけ更新する（位置の流れを `SpotsViewModel` が間引く） | 前面の更新は 1 秒ごとに届き、そのたびに全注釈と一覧を作り直していた | `SpotsViewModel.displayLocation` |
+| ホームの日送りは、表示していない日を裏で計算してから切り替える | `dayOffset` の変更で週の 7 日をメインで計算していた（1 日 約 50 ms） | `HomeViewModel.dayOffset` |
+| 四角い詳細の写真は枠から逆算した大きさで描く（`scaleEffect` をやめる） | 中身が正方形の高さを超え、上下にはみ出していた | `SpotSnapshotView.displaySize`, `SpotDetailPanel` |
+| RSS/HTML の解析と写真ライブラリの検索は `Task.detached` で | メインで数百 ms〜数秒かかることがある | `FeedService`, `PhotoImportService` |
+
 ## 2026-11-09 L35 固まりの診断と修正・表示崩れ・テーマ例・位置の手直し
 
 | 決定 | 理由 | 影響 |

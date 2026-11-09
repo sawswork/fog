@@ -31,7 +31,11 @@ final class PhotoImportService {
         let known = Set(session.catches.flatMap { [$0.photoLocalIdentifier].compactMap { $0 } + $0.photoLocalIdentifiers })
         var done = imported
         var count = 0
-        for asset in library.assets(from: session.startedAt, to: end, near: coordinate) {
+        // 写真ライブラリの検索はメインでしない（ライブラリが大きいと数秒かかる）
+        let library = self.library
+        let from = session.startedAt
+        let assets = await Task.detached(priority: .utility) { library.assets(from: from, to: end, near: coordinate) }.value
+        for asset in assets {
             let id = asset.localIdentifier
             if known.contains(id) || done.contains(id) { continue }
             guard let image = await library.image(for: asset) else { continue }

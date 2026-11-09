@@ -9,6 +9,8 @@ struct PhotoViewer: View {
     let catchItem: Catch
     /// 仲間の釣果など、ライブラリに写真が無いときのサムネイル
     var fallback: Data?
+    /// 仲間の釣果なら、その ID（写真本体を iCloud から取りに行き、「写真に保存」を出す）
+    var sharedID: UUID?
     @Environment(\.dismiss) private var dismiss
     @Environment(AppServices.self) private var services
     @State private var image: UIImage?
@@ -17,6 +19,9 @@ struct PhotoViewer: View {
     @State private var lastScale: CGFloat = 1
     @State private var offset: CGSize = .zero
     @State private var lastOffset: CGSize = .zero
+    @State private var fetchingFull = false
+    @State private var saved = false
+    @State private var fullLoaded = false
 
     var body: some View {
         ZStack {
@@ -70,6 +75,29 @@ struct PhotoViewer: View {
                 }
                 .padding(DS.Spacing.l)
                 Spacer()
+                // 仲間の釣果：写真本体の取得状況と「写真に保存」（この端末のフォトライブラリへ）
+                if sharedID != nil {
+                    HStack {
+                        if fetchingFull {
+                            ProgressView().tint(.white)
+                            Text("写真を取得中").font(DS.Font.caption).foregroundStyle(.white.opacity(0.8))
+                        } else if !fullLoaded {
+                            Text("サムネイルを表示中（本体を取れませんでした。圏内でもう一度）").font(DS.Font.caption).foregroundStyle(.white.opacity(0.7))
+                        }
+                        Spacer()
+                        if image != nil {
+                            Button { save() } label: {
+                                Label(saved ? "保存しました" : "写真に保存", systemImage: saved ? "checkmark" : "square.and.arrow.down")
+                                    .font(DS.Font.label).foregroundStyle(saved ? DS.Color.background : .white)
+                                    .padding(.horizontal, DS.Spacing.l).padding(.vertical, DS.Spacing.s)
+                                    .background(saved ? DS.Color.accent : Color.white.opacity(0.18), in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(saved)
+                        }
+                    }
+                    .padding(DS.Spacing.l)
+                }
             }
         }
         .preferredColorScheme(.dark)
@@ -78,6 +106,16 @@ struct PhotoViewer: View {
 
     private func load() async {
         defer { loading = false }
+        if let sharedID {
+            // 仲間の釣果：まずサムネイル、続けて写真本体を iCloud から（取れたら端末に残る）
+            if let data = services.party.cachedPhoto(for: sharedID), let ui = UIImage(data: data) { image = ui; fullLoaded = true; return }
+            if let data = fallback ?? services.party.thumbnail(for: sharedID), let ui = UIImage(data: data) { image = ui }
+            loading = false
+            fetchingFull = true
+            if let data = await services.party.fetchPhoto(for: sharedID), let ui = UIImage(data: data) { image = ui; fullLoaded = true }
+            fetchingFull = false
+            return
+        }
         if let id = catchItem.photoLocalIdentifier ?? catchItem.photoLocalIdentifiers.first,
            let asset = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil).firstObject,
            let cg = await PhotoLibraryService().image(for: asset, maxPixel: 2048) {
@@ -85,6 +123,21 @@ struct PhotoViewer: View {
             return
         }
         if let data = fallback ?? services.store.thumbnail(catchID: catchItem.id), let ui = UIImage(data: data) { image = ui }
+    }
+
+    /// この端末のフォトライブラリに保存する（仲間の釣果の写真）
+    private func save() {
+        guard let image else { return }
+        Task {
+            let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+            guard status == .authorized || status == .limited else { return }
+            try? await PHPhotoLibrary.shared().performChanges {
+                let req = PHAssetChangeRequest.creationRequestForAsset(from: image)
+                req.creationDate = catchItem.at
+                req.location = CLLocation(latitude: catchItem.coordinate.latitude, longitude: catchItem.coordinate.longitude)
+            }
+            saved = true
+        }
     }
 }
 
