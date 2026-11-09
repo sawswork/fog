@@ -63,10 +63,28 @@ struct FishDatabaseSection: View {
     @State private var waters: String?
     @State private var caughtOnly = false
     @State private var selected: FishEntry?
+    /// 絞り込みの結果（裏で計算して差し替える。入力のたびに 4,000 種を本文で走査しないよう 150 ms 間引く）
+    @State private var results: [FishEntry] = []
+    @State private var searching = false
+    @State private var shown = 240
+    @State private var filterTask: Task<Void, Never>?
 
     private let columns = [GridItem(.flexible(), spacing: DS.Spacing.m), GridItem(.flexible(), spacing: DS.Spacing.m), GridItem(.flexible(), spacing: DS.Spacing.m)]
-    private var results: [FishEntry] {
-        catalog.filtered(query: query, group: group, family: family, month: month, waters: waters, namedOnly: namedOnly && query.isEmpty, caughtOnly: caughtOnly ? caughtIDs : nil)
+
+    /// 絞り込みの鍵（変わったら計算し直す）
+    private var filterKey: String { [query, group ?? "", family ?? "", month.map(String.init) ?? "", waters ?? "", namedOnly ? "n" : "", caughtOnly ? "c" : "", String(catalog.entries.count)].joined(separator: "|") }
+
+    private func scheduleFilter(debounce: Bool) {
+        filterTask?.cancel()
+        let cat = catalog, q = query, g = group, f = family, m = month, w = waters, n = namedOnly && query.isEmpty, c = caughtOnly ? caughtIDs : nil
+        searching = true
+        filterTask = Task {
+            if debounce { try? await Task.sleep(nanoseconds: 150_000_000) }
+            if Task.isCancelled { return }
+            let out = await Task.detached(priority: .userInitiated) { cat.filtered(query: q, group: g, family: f, month: m, waters: w, namedOnly: n, caughtOnly: c) }.value
+            if Task.isCancelled { return }
+            results = out; shown = 240; searching = false
+        }
     }
 
     var body: some View {
@@ -80,6 +98,7 @@ struct FishDatabaseSection: View {
                 let list = results
                 HStack {
                     Text("\(list.count) 種").font(DS.Font.number(12)).foregroundStyle(DS.Color.textTertiary)
+                    if searching { ProgressView().scaleEffect(0.6).tint(DS.Color.textTertiary) }
                     if !query.isEmpty || group != nil || family != nil || month != nil || waters != nil || caughtOnly || !namedOnly {
                         Button("絞り込みを消す") { query = ""; group = nil; family = nil; month = nil; waters = nil; caughtOnly = false; namedOnly = true }
                             .font(DS.Font.caption).foregroundStyle(DS.Color.accent).buttonStyle(.plain)
@@ -88,15 +107,25 @@ struct FishDatabaseSection: View {
                 }
                 ScrollView(.vertical, showsIndicators: false) {
                     LazyVGrid(columns: columns, alignment: .leading, spacing: DS.Spacing.m) {
-                        ForEach(list) { e in
+                        ForEach(list.prefix(shown)) { e in
                             FishCard(entry: e, caught: caughtCount[e.id])
                                 .onTapGesture { selected = e }
                         }
                     }
-                    .padding(.bottom, DS.Spacing.l)
+                    // 一度に全部並べると差分計算が重いので 240 件ずつ
+                    if list.count > shown {
+                        Button { shown += 240 } label: {
+                            Text("さらに表示（残り \(list.count - shown) 種）").font(DS.Font.caption).foregroundStyle(DS.Color.accent)
+                                .padding(.vertical, DS.Spacing.m).frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Color.clear.frame(height: DS.Spacing.l)
                 }
             }
         }
+        .onAppear { scheduleFilter(debounce: false) }
+        .onChange(of: filterKey) { _, _ in scheduleFilter(debounce: !query.isEmpty) }
         .sheet(item: $selected) { e in FishDetailView(entry: e) }
     }
 
@@ -178,6 +207,7 @@ struct FishDetailView: View {
     let entry: FishEntry
     @Environment(AppServices.self) private var services
     @State private var own: [Catch] = []
+    @State private var ownSpots: [String] = []
     @State private var showOwn = false
     @State private var ownEntry: GuideEntry?
 
@@ -187,7 +217,10 @@ struct FishDetailView: View {
                 hero
                 VStack(alignment: .leading, spacing: DS.Spacing.s) {
                     names
+                    adviceSection
+                    placesSection
                     stats
+                    sizeNote
                     months
                     if let t = entry.summary, !t.isEmpty { section("概要") { body(t) } }
                     if let t = entry.morphology, !t.isEmpty { section("形態・特徴") { body(t) } }
@@ -259,12 +292,64 @@ struct FishDetailView: View {
             .padding(.horizontal, 7).padding(.vertical, 3).background(DS.Color.panel, in: Capsule())
     }
 
+    private var advice: FishAdvice.Output {
+        let m = Calendar(identifier: .gregorian).component(.month, from: Date())
+        return FishAdvice.make(entry, month: m, ownCount: own.count, ownMaxCm: own.compactMap(\.lengthCm).max())
+    }
+
+    /// 釣るためのアドバイス（種のデータから組み立てる。2026-11-09 開発者「1 番上にあなたからのアドバイス」）
+    private var adviceSection: some View {
+        section("釣るためのアドバイス") {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(advice.advice.enumerated()), id: \.offset) { _, line in
+                    HStack(alignment: .top, spacing: 6) {
+                        Circle().fill(DS.Color.accent).frame(width: 5, height: 5).padding(.top, 6)
+                        Text(line).font(.system(size: 12)).foregroundStyle(DS.Color.textPrimary).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Text("出典の数値と解説から機械的に組み立てた目安です").font(.system(size: 9)).foregroundStyle(DS.Color.textTertiary)
+            }
+        }
+    }
+
+    @ViewBuilder private var placesSection: some View {
+        let a = advice
+        if !a.places.isEmpty || a.distribution != nil || !own.isEmpty {
+            section("釣れる場所") {
+                VStack(alignment: .leading, spacing: 6) {
+                    if !a.places.isEmpty {
+                        FlowTags(tags: a.places)
+                    }
+                    if let d = a.distribution { Text("分布: " + d).font(.system(size: 11)).foregroundStyle(DS.Color.textSecondary).fixedSize(horizontal: false, vertical: true) }
+                    if !ownSpots.isEmpty {
+                        Text("自分が釣った場所: " + ownSpots.joined(separator: "・")).font(.system(size: 11)).foregroundStyle(DS.Color.accent).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+    }
+
     private var stats: some View {
         HStack(spacing: DS.Spacing.s) {
             stat("最大", entry.maxLengthCm.map { "\(Int($0.rounded()))" } ?? "—", unit: "cm")
-            stat("よくある", entry.commonLengthCm.map { "\(Int($0.rounded()))" } ?? "—", unit: "cm")
+            stat("よくある", (entry.commonLengthCm ?? entry.typicalLengthCm).map { "\(Int($0.rounded()))" } ?? "—", unit: "cm")
             stat("水深", depthText, unit: "m")
             stat("水温", tempText, unit: "℃")
+        }
+    }
+
+    /// 成熟サイズ・最大体重・出どころ
+    @ViewBuilder private var sizeNote: some View {
+        let parts: [String] = [
+            entry.maturityLengthCm.map { "成熟（持ち帰りの目安）\(Int($0.rounded())) cm 以上" },
+            entry.maxWeightKg.map { $0 >= 1 ? String(format: "最大体重 %.1f kg", $0) : "最大体重 \(Int(($0 * 1000).rounded())) g" },
+            entry.lengthType.flatMap { $0 == "TL" ? nil : ($0 == "SL" ? "長さは標準体長" : ($0 == "FL" ? "長さは尾叉長" : ($0 == "ML" ? "長さは胴長" : nil))) },
+            entry.lengthSource == "wikipedia" ? "サイズは Wikipedia の記述から" : nil,
+        ].compactMap { $0 }
+        if !parts.isEmpty {
+            Text(parts.joined(separator: " · ")).font(.system(size: 10)).foregroundStyle(DS.Color.textTertiary).fixedSize(horizontal: false, vertical: true)
+        } else if entry.maxLengthCm == nil {
+            Text("サイズの記録が出典にありません").font(.system(size: 10)).foregroundStyle(DS.Color.textTertiary)
         }
     }
 
@@ -386,5 +471,48 @@ struct FishDetailView: View {
     private func reload() {
         let sessions = (try? services.store.ownSessions()) ?? []
         own = sessions.flatMap(\.catches).filter { entry.matches(speciesName: $0.species) }.sorted { $0.at > $1.at }
+        let spots = Dictionary(uniqueKeysWithValues: ((try? services.store.spots()) ?? []).map { ($0.id, $0.name) })
+        var counts: [String: Int] = [:]
+        for s in sessions where s.catches.contains(where: { entry.matches(speciesName: $0.species) }) {
+            counts[spots[s.spotID] ?? "釣り場", default: 0] += s.catches.filter { entry.matches(speciesName: $0.species) }.count
+        }
+        ownSpots = counts.sorted { $0.value > $1.value }.prefix(4).map { "\($0.key) \($0.value)尾" }
+    }
+}
+
+/// 語のタグを折り返して並べる
+struct FlowTags: View {
+    let tags: [String]
+    var body: some View {
+        // 幅に合わせて折り返す簡易レイアウト（iOS 16+ の Layout）
+        FlowLayout(spacing: 6) {
+            ForEach(tags, id: \.self) { t in
+                Text(t).font(.system(size: 11, weight: .semibold)).foregroundStyle(DS.Color.textPrimary)
+                    .padding(.horizontal, 8).padding(.vertical, 4).background(DS.Color.surfaceRaised, in: Capsule())
+            }
+        }
+    }
+}
+
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 6
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? 300
+        var x: CGFloat = 0, y: CGFloat = 0, rowH: CGFloat = 0
+        for v in subviews {
+            let s = v.sizeThatFits(.unspecified)
+            if x + s.width > width, x > 0 { x = 0; y += rowH + spacing; rowH = 0 }
+            x += s.width + spacing; rowH = max(rowH, s.height)
+        }
+        return CGSize(width: width, height: y + rowH)
+    }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, rowH: CGFloat = 0
+        for v in subviews {
+            let s = v.sizeThatFits(.unspecified)
+            if x + s.width > bounds.maxX, x > bounds.minX { x = bounds.minX; y += rowH + spacing; rowH = 0 }
+            v.place(at: CGPoint(x: x, y: y), proposal: .unspecified)
+            x += s.width + spacing; rowH = max(rowH, s.height)
+        }
     }
 }

@@ -51,6 +51,9 @@ def wiki_fields(title):
         "usage": F.clean(F.find_section(sec, ["人間との関わり", "利用", "釣り", "食材", "漁業"]), 600),
     }
     out["spawning"] = F.spawning_from(sec); out["spawningMonths"] = F.months_from(out["spawning"])
+    mx, typ = F.lengths_from((out.get("morphology") or "") + " " + (out.get("summary") or ""))
+    if mx: out["wikiMaxLengthCm"] = round(mx, 1)
+    if typ: out["typicalLengthCm"] = round(typ, 1)
     out["seasonNote"] = F.season_from(sec); out["seasonMonths"] = F.months_from(out["seasonNote"])
     fam = F.taxobox_family(wt)
     if fam: out["family"] = fam
@@ -87,6 +90,10 @@ for o in checklist:
         for k in ("maxLengthCm", "lengthType", "commonLengthCm", "maxWeightKg", "maturityLengthCm", "environment", "waters", "habitatType", "migration", "depthMinM", "depthMaxM", "climate", "tempMinC", "tempMaxC", "distribution", "description", "biology", "reproduction"):
             if k in d: e[k] = d[k]
         e["sources"].append({"name": "FishBase (Froese & Pauly, CC BY-NC 3.0)", "url": f"https://www.fishbase.se/summary/{code}"})
+        e["lengthSource"] = "fishbase"
+    if "maxLengthCm" not in e and e.get("wikiMaxLengthCm"):
+        e["maxLengthCm"] = e["wikiMaxLengthCm"]; e["lengthSource"] = "wikipedia"
+    e.pop("wikiMaxLengthCm", None)
     cr = credits.get(e["id"]) or credits.get(f"fb{code}")
     img_file = None
     for cand in (e["id"] + ".jpg", f"fb{code}.jpg"):
@@ -105,6 +112,9 @@ for c in curated:
     if title in wikitext:
         e.update(wiki_fields(title))
         e["sources"].append({"name": f"Wikipedia 日本語版「{title}」(CC BY-SA 4.0)", "url": "https://ja.wikipedia.org/wiki/" + title.replace(" ", "_")})
+        if e.get("wikiMaxLengthCm"): e["maxLengthCm"] = e["wikiMaxLengthCm"]; e["lengthSource"] = "wikipedia"
+        e.pop("wikiMaxLengthCm", None)
+        if e["id"] in ("aoriika", "yariika", "surumeika", "hiika", "kouika", "kensakiika"): e["lengthType"] = "ML"
     else:
         e["missing"] = True
     cr = credits.get(c["id"])
