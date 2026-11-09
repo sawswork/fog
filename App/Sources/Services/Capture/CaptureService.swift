@@ -32,6 +32,21 @@ final class CaptureService {
         get { UserDefaults.standard.string(forKey: "fog.currentRig").flatMap(UUID.init(uuidString:)) }
         set { UserDefaults.standard.set(newValue?.uuidString, forKey: "fog.currentRig") }
     }
+    /// 撮影画面で選んだ釣った人（F-54）。nil は自分。同じ釣行の間は引き継ぎ、釣行が変わったら自分に戻る
+    var currentAngler: String? {
+        get {
+            guard let raw = UserDefaults.standard.string(forKey: "fog.currentAngler"), !raw.isEmpty else { return nil }
+            let parts = raw.split(separator: "|", maxSplits: 1).map(String.init)
+            guard parts.count == 2, let active = try? store.activeSession(), active.id.uuidString == parts[0] else { return nil }
+            return parts[1] == AnglerSettings.ownName ? nil : parts[1]
+        }
+        set {
+            let sessionID = (try? store.activeSession())?.id.uuidString ?? ""
+            UserDefaults.standard.set(newValue.map { "\(sessionID)|\($0)" } ?? "", forKey: "fog.currentAngler")
+        }
+    }
+    /// 釣果を保存したあとに呼ばれる（仲間との共有のアップロード。F-54）
+    var onCatchSaved: ((Catch) -> Void)?
 
     init(store: FogStore, environment: EnvironmentService, detection: SessionDetectionService, classifier: SpeciesClassifying = CoreMLSpeciesClassifier()) {
         self.store = store
@@ -51,7 +66,8 @@ final class CaptureService {
             lengthCm: measurement?.lengthCm, lengthErrorCm: measurement?.errorCm,
             tackle: currentTackle ?? session.tackle, rigID: currentRigID ?? session.rigID,
             env: environment.snapshot(at: date, coordinate: location),
-            pointID: detection.currentPointID(), speciesCandidates: candidates, tackleID: session.tackleID
+            pointID: detection.currentPointID(), speciesCandidates: candidates, tackleID: session.tackleID,
+            angler: currentAngler
         )
         // 背景のタグ（足場・時間帯・天気。F-31）
         item.sceneTags = await SceneClassifier.tags(for: image)
@@ -98,16 +114,18 @@ final class CaptureService {
             Self.log.error("catch save failed: \(error.localizedDescription, privacy: .public)")
             return nil
         }
-        let record = merged ? nil : judge(saved, spotID: current.spotID)
+        // 記録更新の判定は自分の魚だけ（他の人の魚は図鑑・自己記録に入れない。F-54）
+        let record = (merged || !saved.isOwn(ownName: AnglerSettings.ownName)) ? nil : judge(saved, spotID: current.spotID)
         // 記録更新の通知はアプリを閉じているときだけ（撮影直後はシートで見せる。§8）
         if let record, record.hasAny, UIApplication.shared.applicationState != .active {
             SessionNotifications.record(species: saved.species, lengthCm: saved.lengthCm, judgement: record)
         }
+        onCatchSaved?(saved)
         return Outcome(catchRecord: saved, merged: merged, record: record)
     }
 
     private func judge(_ new: Catch, spotID: UUID) -> Analytics.RecordJudgement {
-        let all = (try? store.sessions()) ?? []
+        let all = (try? store.ownSessions()) ?? []
         let existing = all.flatMap { s in s.catches.map { ($0, s.spotID) } }
         return Analytics.judge(new: new, newSpotID: spotID, existing: existing)
     }
@@ -144,13 +162,37 @@ final class CaptureService {
         // 位置が無い釣行は自動では終われない（位置で終了を判定するため）ので、その場で終えておく。ホームの「記録中」にもしない
         if !spot.coordinate.isPlausible { session.endedAt = date }
         try? store.upsert(session)
+        // 位置のある釣行はそのまま「記録中」にする（立ち位置・スナップショット・安全通知を始める。終了はホームのボタン）
+        if session.isActive { detection.adopt(session: session, coordinate: coordinate ?? spot.coordinate) }
         return session
     }
 
+    /// タックル・リグの後からの設定（シンカー・フック・ワームはリグのプリセット。2026-11-09 開発者の指示）
+    func setRig(catchID: UUID, tackle: TackleKind?, rigID: UUID?) {
+        guard let all = try? store.sessions(), var session = all.first(where: { $0.catches.contains { $0.id == catchID } }),
+              let index = session.catches.firstIndex(where: { $0.id == catchID }) else { return }
+        session.catches[index].tackle = tackle
+        session.catches[index].rigID = rigID
+        try? store.upsert(session)
+    }
+
+    /// 釣った人の変更（F-54）
+    func setAngler(catchID: UUID, angler: String?) {
+        guard let all = try? store.sessions(), var session = all.first(where: { $0.catches.contains { $0.id == catchID } }),
+              let index = session.catches.firstIndex(where: { $0.id == catchID }) else { return }
+        session.catches[index].angler = (angler == AnglerSettings.ownName || angler?.isEmpty == true) ? nil : angler
+        try? store.upsert(session)
+        onCatchSaved?(session.catches[index])
+    }
+
     /// 釣果の削除。写真は求められたときだけライブラリからも消す（削除は分析に即時反映）。
+    /// 釣果を消したあとに呼ばれる（共有の取り消し。F-54）
+    var onCatchDeleted: ((UUID) -> Void)?
+
     func deleteCatch(id: UUID, deletePhoto: Bool) async {
         let item = (try? store.catches())?.first { $0.id == id }
         try? store.deleteCatch(id: id)
+        onCatchDeleted?(id)
         if deletePhoto, let item {
             await PhotoLibraryService.delete(identifiers: [item.photoLocalIdentifier].compactMap { $0 } + item.photoLocalIdentifiers)
         }
@@ -163,6 +205,7 @@ final class CaptureService {
         session.catches[index].lengthCm = lengthCm
         session.catches[index].lengthErrorCm = lengthCm == nil ? nil : 0.5
         try? store.upsert(session)
+        onCatchSaved?(session.catches[index])
     }
 
     /// 魚種の確定（候補 3 種の 1 タップ、F-10）／後からの修正（F-24）。
@@ -174,6 +217,7 @@ final class CaptureService {
         session.catches[index].speciesCorrected = corrected
         if corrected { session.catches[index].speciesConfidence = 1 }
         try? store.upsert(session)
+        onCatchSaved?(session.catches[index])
         // 端末内の補正テーブルに学習（次回の候補順に反映。F-24）
         CoreMLSpeciesClassifier.learn(predicted: predicted, corrected: species)
     }

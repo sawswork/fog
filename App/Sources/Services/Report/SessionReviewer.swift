@@ -5,7 +5,14 @@ import Core
 /// 気象は予報キャッシュにその時間の値があればそれを、無ければ釣行中に保存したスナップショットを使う。
 @MainActor
 enum SessionReviewer {
-    struct Output { let points: [ScorePoint]; let result: SessionReview.Result?; let accuracy: SessionReview.Accuracy }
+    struct Output {
+        let points: [ScorePoint]
+        let result: SessionReview.Result?
+        let accuracy: SessionReview.Accuracy
+        /// 釣行の時間範囲（前後 1 時間）の潮位曲線（10 分刻み、推算）。釣行詳細の「条件の推移」に使う
+        let tide: [(at: Date, levelCm: Double)]
+        let extremes: [TideExtreme]
+    }
 
     static func review(_ session: Core.Session, services: AppServices, engine: ScoreEngine? = nil) -> Output? {
         let env = services.environment
@@ -30,14 +37,18 @@ enum SessionReviewer {
             builder.build(at: t, coordinate: coordinate, inputs: inputs, tide: tide, extremes: extremes)
         }
         let times = session.catches.map(\.at)
+        let curve: [(at: Date, levelCm: Double)] = tide.map { engine in
+            stride(from: 0, through: to.timeIntervalSince(from), by: 600).map { (at: from.addingTimeInterval($0), levelCm: engine.level(at: from.addingTimeInterval($0))) }
+        } ?? []
         return Output(points: points,
                       result: SessionReview.evaluate(points: points, catchTimes: times, from: session.startedAt, to: end),
-                      accuracy: SessionReview.split(points: points, catchTimes: times, from: session.startedAt, to: end))
+                      accuracy: SessionReview.split(points: points, catchTimes: times, from: session.startedAt, to: end),
+                      tide: curve, extremes: extremes.filter { $0.at >= from && $0.at <= to })
     }
 
     /// 自分データの重み付きエンジン（対象の釣行は学習から外す）
     static func engine(excluding id: UUID?, services: AppServices) -> ScoreEngine {
-        let sessions = (try? services.store.sessions()) ?? []
+        let sessions = (try? services.store.ownSessions()) ?? []
         let spots = (try? services.store.spots()) ?? []
         let personal = PersonalModel.learn(from: sessions.filter { !$0.isActive && $0.id != id }, coordinateOf: { s in spots.first { $0.id == s.spotID }?.coordinate })
         return ScoreEngine(personal: personal.total.hours >= 1 ? personal : nil)

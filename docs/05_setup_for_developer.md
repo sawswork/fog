@@ -5,9 +5,9 @@ Claude Code がループを回し始める前に、一度だけ必要な作業�
 
 ## 1. GitHub（5分）
 
-1. リポジトリ `knowlsaws/fog` の Settings → Secrets and variables → Actions
+1. リポジトリ `sawswork/fog` の Settings → Secrets and variables → Actions
 2. **Variables** タブに追加
-   - `BUNDLE_ID_PREFIX` = 逆ドメイン（例 `jp.knowlsaws`）。バンドル ID は `{prefix}.fog` と `{prefix}.fog.widgets` になる
+   - `BUNDLE_ID_PREFIX` = 逆ドメイン（例 `jp.example`）。バンドル ID は `{prefix}.fog` と `{prefix}.fog.widgets` になる
 3. **Secrets** タブに追加（手順 2〜3 で取得した値）
    - `APPLE_TEAM_ID`
    - `ASC_KEY_ID`
@@ -43,7 +43,7 @@ appstoreconnect.apple.com
 
 ## 4. 最初のループを始める
 
-1. Claude Code で `knowlsaws/fog` を開き、「`docs/03_loop_plan.md` の L0 を始めて」と指示する
+1. Claude Code で `sawswork/fog` を開き、「`docs/03_loop_plan.md` の L0 を始めて」と指示する
 2. L0 の PR が来たら、CI が緑であることを確認してマージ
 3. `testflight` ワークフローが走り、10〜20分後に TestFlight に通知が来る。インストールして5タブが出れば L0 完了
 4. 以降は「次のループを始めて」の繰り返し。気づいたことは `feedback` ラベルの Issue にする

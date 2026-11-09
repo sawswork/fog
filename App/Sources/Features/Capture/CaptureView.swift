@@ -8,17 +8,21 @@ struct CaptureView: View {
     @State private var model = CaptureViewModel()
     @State private var showRigPicker = false
     @State private var showHookMenu = false
+    @State private var showAnglerPicker = false
     @State private var toast: String?
 
     var body: some View {
         ZStack {
-            if DepthCaptureSession.isSupported {
+            // LiDAR の無い端末（iPhone 17 など）でもカメラは動く。サイズだけ未計測で記録する（F-12）
+            if ARWorldTrackingConfiguration.isSupported {
                 ARPreview(session: model.depth.session).ignoresSafeArea()
             } else {
                 DS.Color.background.ignoresSafeArea()
-                Text("LiDAR 非対応").font(DS.Font.label).foregroundStyle(DS.Color.textTertiary)
+                Text("カメラを使えません").font(DS.Font.label).foregroundStyle(DS.Color.textTertiary)
             }
-            MeasureFrame(status: model.status, lengthCm: model.liveLengthCm, endpoints: model.endpoints)
+            if model.measuresLength {
+                MeasureFrame(status: model.status, lengthCm: model.liveLengthCm, endpoints: model.endpoints)
+            }
             VStack {
                 header
                 Spacer()
@@ -40,14 +44,38 @@ struct CaptureView: View {
         .onAppear { model.attach(services: services); model.start() }
         .onDisappear { model.stop() }
         .sheet(isPresented: $showRigPicker) { rigPicker }
+        .confirmationDialog("釣った人", isPresented: $showAnglerPicker, titleVisibility: .visible) {
+            ForEach(model.anglerCandidates, id: \.self) { name in
+                Button(name == model.angler ? "✓ \(name)" : name) { model.select(angler: name) }
+            }
+            Button("キャンセル", role: .cancel) {}
+        } message: {
+            Text("候補は 設定 > 釣り人 で増やせます")
+        }
     }
 
-    /// 上部：中央に「釣り場名 · 時刻」だけ（確定画像）。右にフラッシュ（夜釣り用、小さく）
+    /// 上部：中央に「釣り場名 · 時刻」とその下に釣った人（F-54）。右にフラッシュ（夜釣り用、小さく）
     private var header: some View {
         ZStack {
-            Text("\(model.spotName.isEmpty ? "釣り場" : model.spotName) · \(Date.now.formatted(.dateTime.hour().minute()))")
-                .font(.system(size: 15, weight: .medium)).foregroundStyle(Color.white.opacity(0.75))
-                .shadow(color: .black.opacity(0.5), radius: 3)
+            VStack(spacing: 4) {
+                Text("\(model.spotName.isEmpty ? "釣り場" : model.spotName) · \(Date.now.formatted(.dateTime.hour().minute()))")
+                    .font(.system(size: 15, weight: .medium)).foregroundStyle(Color.white.opacity(0.75))
+                    .shadow(color: .black.opacity(0.5), radius: 3)
+                Button { showAnglerPicker = true } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "person.fill").font(.system(size: 10, weight: .semibold))
+                        Text(model.angler).font(.system(size: 13, weight: .semibold))
+                        if model.anglerCandidates.count > 1 { Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold)) }
+                    }
+                    .foregroundStyle(model.angler == AnglerSettings.ownName ? Color.white.opacity(0.85) : DS.Color.sun)
+                    .padding(.horizontal, 10).padding(.vertical, 4)
+                    .background(Color.black.opacity(0.55), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                if !model.measuresLength {
+                    Text("サイズ計測なし（LiDAR 非対応）").font(.system(size: 11)).foregroundStyle(Color.white.opacity(0.6))
+                }
+            }
             HStack {
                 Spacer()
                 Button { model.toggleTorch() } label: {

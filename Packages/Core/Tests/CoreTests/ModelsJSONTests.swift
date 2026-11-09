@@ -23,6 +23,45 @@ final class ModelsJSONTests: XCTestCase {
     func testSessionRoundTrip() throws { try roundTrip(SampleData.session()) }
     func testSpeciesCatalogRoundTrip() throws { try roundTrip(Species.initialCatalog) }
 
+    /// 釣った人（F-54）：無い JSON は自分の釣果として読める。名前が入っていれば別の人
+    func testCatchAnglerDefaultsToOwner() throws {
+        var c = SampleData.catchRecord()
+        XCTAssertNil(c.angler)
+        XCTAssertTrue(c.isOwn(ownName: "私"))
+        XCTAssertTrue(c.isOwn(ownName: nil))
+        c.angler = "B"
+        XCTAssertFalse(c.isOwn(ownName: "私"))
+        XCTAssertTrue(c.isOwn(ownName: "B"))
+        try roundTrip(c)
+        // angler の無い古い JSON
+        var data = try FogJSON.encode(SampleData.catchRecord())
+        XCTAssertFalse(String(decoding: data, as: UTF8.self).contains("angler"))
+        data = try FogJSON.encode(c)
+        XCTAssertTrue(String(decoding: data, as: UTF8.self).contains("\"angler\" : \"B\""))
+    }
+
+    func testSharedCatchRoundTripAndFeedCatch() throws {
+        let c = SampleData.catchRecord()
+        let shared = SharedCatch.make(from: c, ownName: "私", device: "iPhone-A", spotName: "函館港", updatedAt: SampleData.endedAt)
+        XCTAssertEqual(shared.angler, "私")
+        XCTAssertEqual(shared.id, c.id)
+        try roundTrip(shared)
+        let feed = shared.feedCatch()
+        XCTAssertEqual(feed.placeName, "函館港")
+        XCTAssertEqual(feed.itemID, "shared:" + c.id.uuidString)
+        XCTAssertTrue(feed.title.contains("（私）"))
+        XCTAssertEqual(feed.species, [c.species])
+    }
+
+    func testSquidSpecies() {
+        XCTAssertEqual(Species.lookup("マイカ")?.name, "スルメイカ")
+        XCTAssertEqual(Species.lookup("ヤリイカ")?.id, "yariika")
+        XCTAssertTrue(Species.lookup("ヒイカ")!.isSquid)
+        XCTAssertFalse(Species.lookup("アイナメ")!.isSquid)
+        // ID は重複しない
+        XCTAssertEqual(Set(Species.initialCatalog.map(\.id)).count, Species.initialCatalog.count)
+    }
+
     func testEnvSnapshotWithAllFieldsRoundTrips() throws {
         var env = SampleData.snapshot(id: SampleData.snapshotID, at: SampleData.startedAt, isForecast: true)
         env.visibilityM = 12_000

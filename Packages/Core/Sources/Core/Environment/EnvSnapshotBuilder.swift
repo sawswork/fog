@@ -24,8 +24,15 @@ public struct EnvSnapshotBuilder: Sendable {
         build(at: date, coordinate: coordinate, inputs: inputs, tide: tideStation.map { TideEngine(station: $0) }, extremes: nil)
     }
 
+    /// 釣れ率の計算だけに要る項目（潮位・変化率・潮名・気象）。次の満干は探さないので `snapshot` より 10 倍以上速い。
+    /// 釣り場カード・港の候補・比較のように点の数が多いところで使う（2026-11-09 処理速度）。
+    public func buildForScore(at date: Date, coordinate: Coordinate, inputs: Inputs, tide: TideEngine?) -> EnvSnapshot {
+        build(at: date, coordinate: coordinate, inputs: inputs, tide: tide, extremes: [], searchNextExtremes: false)
+    }
+
     /// 推移計算用：潮汐エンジンと期間内の満干を渡すと、点ごとの満干探索を省ける（ホームの 15 分刻み）。
-    public func build(at date: Date, coordinate: Coordinate, inputs: Inputs, tide: TideEngine?, extremes: [TideExtreme]?) -> EnvSnapshot {
+    /// `searchNextExtremes` が false なら、渡した満干に無いときも探さない（次の満干は nil のまま）。
+    public func build(at date: Date, coordinate: Coordinate, inputs: Inputs, tide: TideEngine?, extremes: [TideExtreme]?, searchNextExtremes: Bool = true) -> EnvSnapshot {
         var env = EnvSnapshot(at: date, coordinate: coordinate, isForecast: false)
 
         // 気象：直近 1 時間値を補間
@@ -75,13 +82,16 @@ public struct EnvSnapshotBuilder: Sendable {
             let next: [TideExtreme]
             if let extremes, let lastKnown = extremes.last?.at, lastKnown > date.addingTimeInterval(13 * 3600) {
                 next = extremes.filter { $0.at > date }
-            } else {
+            } else if searchNextExtremes {
                 next = engine.nextExtremes(after: date, count: 2)
+            } else {
+                next = (extremes ?? []).filter { $0.at > date }
             }
             env.nextHighTideAt = next.first { $0.kind == .high }?.at
             env.nextLowTideAt = next.first { $0.kind == .low }?.at
         }
-        env.tideName = TideName.from(moonAge: MoonCalculator.age(at: date)).rawValue
+        // 潮名はその日の正午の月齢で決める（1 日の中で変わらない。2026-11-08 の「大潮」誤記の修正）
+        env.tideName = TideName.on(date, timeZone: timeZone).rawValue
 
         // 天文
         let sun = SunCalculator.times(on: date, at: coordinate, timeZone: timeZone)

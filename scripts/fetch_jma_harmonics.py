@@ -59,7 +59,7 @@ def fetch(url, retries=3):
     last = None
     for i in range(retries):
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "fog-tide-data/1.0 (+https://github.com/knowlsaws/fog)"})
+            req = urllib.request.Request(url, headers={"User-Agent": "fog-tide-data/1.0 (+https://github.com/sawswork/fog)"})
             with urllib.request.urlopen(req, timeout=60) as r:
                 raw = r.read()
                 ctype = r.headers.get("Content-Type", "")

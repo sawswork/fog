@@ -5,7 +5,7 @@ import Core
 /// ホーム（§3）。開いた瞬間に「今釣れるか」を数字で、「なぜか」を 4 チップで、「次に何が変わるか」をイベント列で示す。
 struct HomeView: View {
     @Environment(AppServices.self) private var services
-    @State private var model = HomeViewModel()
+    private var model: HomeViewModel { services.homeModel }
     @State private var showBreakdown = false
     @State private var showSpots = false
     @State private var showSettings = false
@@ -16,22 +16,13 @@ struct HomeView: View {
     @State private var showStartFailed = false
     @State private var toggling = false
 
+    @Environment(\.switchTab) private var switchTab
+    @State private var showYear = false
+
     var body: some View {
-        GeometryReader { geo in
-            VStack(spacing: 0) {
-                header.frame(height: geo.size.height * 0.08)
-                Group {
-                    if model.isRecording, let live = model.liveSession { livePanel(live) } else { scoreArea }
-                }
-                .frame(height: geo.size.height * 0.20)
-                chipsRow.frame(height: geo.size.height * 0.12)
-                feedLine.frame(height: geo.size.height * 0.03)
-                ForecastChart(model: model).frame(height: geo.size.height * 0.555)
-                    .padding(.top, DS.Spacing.xs)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, DS.Spacing.l)
-            .padding(.bottom, DS.Spacing.s)
+        Group {
+            // テーマに「ホームの配置」があれば 1 枚の画面に部品を並べる（F-58）。無ければ従来の縦積み
+            if let home = ThemeStore.shared.theme.home { composed(home) } else { standard }
         }
         .onAppear { model.attach(services) }
         .task { await model.refresh() }
@@ -55,10 +46,175 @@ struct HomeView: View {
         .sheet(isPresented: $showMoon) { MoonSheet(model: model).presentationDetents([.medium]) }
         .sheet(isPresented: $showFeed) { FeedView(keywords: model.feedKeywords()).presentationDetents([.large]) }
         .sheet(isPresented: $showAssistant) { AssistantView(home: model).presentationDetents([.large]) }
+        .sheet(isPresented: $showYear) {
+            YearCalendarSheet(model: model) { date in showYear = false; model.show(date: date) }.presentationDetents([.large])
+        }
         .alert("位置が分かりません", isPresented: $showStartFailed) {
             Button("OK", role: .cancel) {}
         } message: {
             Text("位置情報を許可するか、ホームの釣り場を選んでからもう一度押してください")
+        }
+    }
+
+    /// 従来の縦積み（タブ版）
+    private var standard: some View {
+        GeometryReader { geo in
+            VStack(spacing: 0) {
+                header.frame(height: geo.size.height * 0.08)
+                Group {
+                    if model.isRecording, let live = model.liveSession { livePanel(live) } else { scoreArea }
+                }
+                .frame(height: geo.size.height * 0.20)
+                chipsRow.frame(height: geo.size.height * 0.12)
+                feedLine.frame(height: geo.size.height * 0.03)
+                ForecastChart(model: model).frame(height: geo.size.height * 0.555)
+                    .padding(.top, DS.Spacing.xs)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, DS.Spacing.l)
+            .padding(.bottom, DS.Spacing.s)
+        }
+    }
+
+    // MARK: テーマの配置（F-58）：画像の層と部品を、画面に対する割合の座標に置く
+
+    private func composed(_ home: HomeLayout) -> some View {
+        GeometryReader { outer in
+            let safeTop = outer.safeAreaInsets.top
+            let safeBottom = outer.safeAreaInsets.bottom
+            GeometryReader { geo in
+                let size = geo.size
+                ZStack(alignment: .topLeading) {
+                    DS.Color.background
+                    ForEach(Array(home.layers.enumerated()), id: \.offset) { _, layer in
+                        layerView(layer, size: size)
+                    }
+                    if !home.layers.isEmpty {
+                        (home.scrim.map { Color.black.opacity($0) } ?? ThemeStore.shared.theme.palette.scrim).allowsHitTesting(false)
+                    }
+                    ForEach(Array(home.blocks.enumerated()), id: \.offset) { _, block in
+                        blockView(block, size: size, safeTop: safeTop, safeBottom: safeBottom)
+                    }
+                }
+                .frame(width: size.width, height: size.height)
+            }
+            .ignoresSafeArea()
+        }
+    }
+
+    private func place<V: View>(_ v: V, _ r: LayoutRect, in size: CGSize) -> some View {
+        v.frame(width: r.w * size.width, height: r.h * size.height)
+            .position(x: (r.x + r.w / 2) * size.width, y: (r.y + r.h / 2) * size.height)
+    }
+
+    @ViewBuilder private func layerView(_ layer: HomeLayout.Layer, size: CGSize) -> some View {
+        if let loaded = ThemeAssets.load(named: layer.image) {
+            place(
+                Image(uiImage: loaded.image).resizable()
+                    .aspectRatio(contentMode: layer.fit == "fit" ? .fit : .fill)
+                    .frame(width: layer.rect.w * size.width, height: layer.rect.h * size.height)
+                    .clipped()
+                    .blendMode(layer.blend == "auto" && loaded.blend == .screen ? .screen : .normal)
+                    .opacity(layer.opacity)
+                    .allowsHitTesting(false),
+                layer.rect, in: size)
+        }
+    }
+
+    @ViewBuilder private func blockView(_ b: HomeLayout.Block, size: CGSize, safeTop: CGFloat, safeBottom: CGFloat) -> some View {
+        let content = blockContent(b, safeTop: safeTop, safeBottom: safeBottom)
+            .padding(b.padding)
+            .background(blockBackground(b.background), in: RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous))
+            .opacity(b.opacity)
+        if let action = b.action.flatMap(HomeLayout.Action.init(rawValue:)) ?? defaultAction(b.kind), !selfInteractive(b.kind) {
+            place(content.contentShape(Rectangle()).onTapGesture { perform(action) }, b.rect, in: size)
+        } else {
+            place(content, b.rect, in: size)
+        }
+    }
+
+    private func blockBackground(_ kind: String) -> AnyShapeStyle {
+        switch kind {
+        case "panel": return AnyShapeStyle(DS.Color.panel)
+        case "glass": return AnyShapeStyle(.ultraThinMaterial)
+        default: return AnyShapeStyle(Color.clear)
+        }
+    }
+
+    /// 部品自身がボタンを持つ（まとめてタップにしない）
+    private func selfInteractive(_ kind: HomeLayout.Block.Kind?) -> Bool {
+        switch kind {
+        case .header, .chips, .forecast, .chart, .table, .week, .nav, .score, .feedLine: return true
+        default: return false
+        }
+    }
+
+    private func defaultAction(_ kind: HomeLayout.Block.Kind?) -> HomeLayout.Action? {
+        switch kind {
+        case .recentCatches: return .log
+        case .miniMap: return .spots
+        case .date: return .year
+        default: return nil
+        }
+    }
+
+    private func perform(_ action: HomeLayout.Action) {
+        switch action {
+        case .home: switchTab?(.home)
+        case .log: switchTab?(.log)
+        case .capture: switchTab?(.capture)
+        case .guide: switchTab?(.guide)
+        case .spots: switchTab?(.spots)
+        case .settings: showSettings = true
+        case .breakdown: showBreakdown = true
+        case .feed: showFeed = true
+        case .assistant: showAssistant = true
+        case .spotSwitch: showSpots = true
+        case .moon: showMoon = true
+        case .year: showYear = true
+        case .toggleSession:
+            guard !toggling else { return }
+            toggling = true
+            Task { let ok = await model.toggleSession(); toggling = false; if !ok { showStartFailed = true } }
+        case .none: break
+        }
+    }
+
+    @ViewBuilder private func blockContent(_ b: HomeLayout.Block, safeTop: CGFloat, safeBottom: CGFloat) -> some View {
+        switch b.kind {
+        case .header: header.padding(.top, safeTop)
+        case .score:
+            if model.isRecording, let live = model.liveSession { livePanel(live) } else { scoreArea }
+        case .chips: chipsRow
+        case .feedLine: feedLine
+        case .forecast: ForecastChart(model: model, parts: .all, showsPanel: b.background != "none")
+        case .chart: ForecastChart(model: model, parts: [.dayHeader, .chart], showsPanel: false)
+        case .table: ForecastChart(model: model, parts: [.table], showsPanel: false)
+        case .week: ForecastChart(model: model, parts: [.week], showsPanel: false)
+        case .recentCatches: RecentCatchesStrip()
+        case .miniMap: HomeMiniMap(model: model)
+        case .nav: TabIconsRow(selected: .home, compact: b.style == "compact") { switchTab?($0) }.padding(.bottom, safeBottom)
+        case .button:
+            Group {
+                if let name = b.image, let loaded = ThemeAssets.load(named: name) {
+                    Image(uiImage: loaded.image).resizable().aspectRatio(contentMode: .fit)
+                        .blendMode(loaded.blend == .screen ? .screen : .normal)
+                } else {
+                    Image(systemName: b.symbol ?? "circle").font(.system(size: 20, weight: .semibold)).foregroundStyle(DS.Color.textPrimary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+        case .text:
+            Text(b.text ?? "").font(b.style == "caption" ? DS.Font.caption : (b.style == "title" ? DS.Font.number(22) : DS.Font.label))
+                .foregroundStyle(b.style == "caption" ? DS.Color.textTertiary : DS.Color.textPrimary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading).minimumScaleFactor(0.6)
+        case .date:
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(model.dayOffset == 0 ? "今日" : "").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+                Text(JPFormat.mdw(model.dayStart)).font(DS.Font.number(16)).foregroundStyle(DS.Color.textPrimary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        case .spacer, .none: Color.clear
         }
     }
 
@@ -220,20 +376,7 @@ struct HomeView: View {
                 }
                 .aspectRatio(1, contentMode: .fit)
                 .padding(.vertical, DS.Spacing.s)
-                if !model.speciesScores.isEmpty {
-                    HStack {
-                        Spacer()
-                        VStack(alignment: .leading, spacing: DS.Spacing.s) {
-                            ForEach(model.speciesScores, id: \.species) { s in
-                                HStack(alignment: .firstTextBaseline, spacing: DS.Spacing.s) {
-                                    Text("\(s.score)").font(DS.Font.number(22)).foregroundStyle(DS.Color.textPrimary)
-                                    Text(s.species).font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary).lineLimit(1)
-                                }
-                            }
-                        }
-                        .frame(width: 100, alignment: .leading)
-                    }
-                }
+                // 魚種別スコア（右脇の「89 アイナメ」）は 2026-11-09 開発者の指示で外した。魚種別は年間カレンダーの切替に残る
             }
             .frame(maxWidth: .infinity)
         }
@@ -402,9 +545,19 @@ enum MoonSymbol {
 /// 上：釣れ率（オレンジ、左軸 0〜100）と潮位（海の青、満干の時刻）。下：3 時間ごとの天気・気温・雨・風向・風速・波高の表。
 struct ForecastChart: View {
     let model: HomeViewModel
+    /// 出す部分（テーマの配置では「グラフだけ」「表だけ」のように分けて置ける。F-58）
+    var parts: Parts = .all
+    /// 後ろの面を描くか（画像テーマの配置では自前の泡を描くので消す）
+    var showsPanel = true
     /// 潮位曲線を置く高さ（釣れ率の目盛りで 4〜40 の帯）
     private let tideBand: ClosedRange<Double> = 4...62
     private let hours = Array(stride(from: 0, to: 24, by: 3))
+
+    struct Parts: OptionSet, Hashable, Sendable {
+        let rawValue: Int
+        static let dayHeader = Parts(rawValue: 1), chart = Parts(rawValue: 2), table = Parts(rawValue: 4), week = Parts(rawValue: 8), footer = Parts(rawValue: 16)
+        static let all: Parts = [.dayHeader, .chart, .table, .week, .footer]
+    }
 
     @State private var tapped: Date?
     @State private var showYear = false
@@ -412,30 +565,36 @@ struct ForecastChart: View {
     var body: some View {
         GeometryReader { geo in
             VStack(spacing: DS.Spacing.xs) {
-                dayHeader.frame(height: 22)
-                chart
-                    .chartOverlay { proxy in
-                        GeometryReader { g in
-                            Rectangle().fill(.clear).contentShape(Rectangle())
-                                .onTapGesture { location in
-                                    let origin = g[proxy.plotFrame!].origin
-                                    if let d: Date = proxy.value(atX: location.x - origin.x) { tapped = min(max(d, model.dayStart), model.dayEnd) }
-                                }
+                if parts.contains(.dayHeader) { dayHeader.frame(height: 22) }
+                if parts.contains(.chart) {
+                    chart
+                        .chartOverlay { proxy in
+                            GeometryReader { g in
+                                Rectangle().fill(.clear).contentShape(Rectangle())
+                                    .onTapGesture { location in
+                                        let origin = g[proxy.plotFrame!].origin
+                                        if let d: Date = proxy.value(atX: location.x - origin.x) { tapped = min(max(d, model.dayStart), model.dayEnd) }
+                                    }
+                            }
                         }
-                    }
-                    .frame(height: geo.size.height * 0.37)
-                detailTable
-                weekRow.frame(height: 44)
-                    // 週行の上のスワイプは週送り（±7 日）。それ以外のスワイプは日送り
-                    .highPriorityGesture(DragGesture(minimumDistance: 30).onEnded { v in
-                        if v.translation.width < -30 { step(+7, clamp: true) } else if v.translation.width > 30 { step(-7, clamp: true) }
-                    })
-                footer.frame(height: 16)
+                        // 表・週と一緒のときは 37%、グラフだけのときは残り全部
+                        .frame(height: parts.contains(.table) || parts.contains(.week) ? geo.size.height * 0.37 : nil)
+                        .frame(maxHeight: .infinity)
+                }
+                if parts.contains(.table) { detailTable }
+                if parts.contains(.week) {
+                    weekRow.frame(height: 44)
+                        // 週行の上のスワイプは週送り（±7 日）。それ以外のスワイプは日送り
+                        .highPriorityGesture(DragGesture(minimumDistance: 30).onEnded { v in
+                            if v.translation.width < -30 { step(+7, clamp: true) } else if v.translation.width > 30 { step(-7, clamp: true) }
+                        })
+                }
+                if parts.contains(.footer) { footer.frame(height: 16) }
             }
             .padding(.horizontal, DS.Spacing.m)
             .padding(.vertical, DS.Spacing.s)
             .frame(width: geo.size.width, height: geo.size.height)
-            .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous))
+            .background(showsPanel ? DS.Color.panel : Color.clear, in: RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous))
             .contentShape(Rectangle())
             .gesture(DragGesture(minimumDistance: 30).onEnded { v in
                 if v.translation.width < -30 { step(+1) } else if v.translation.width > 30 { step(-1) }

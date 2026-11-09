@@ -2,64 +2,105 @@ import SwiftUI
 import UIKit
 import CoreImage
 import CoreImage.CIFilterBuiltins
+import Core
 
-/// テーマ（F-49）。`dark` が従来の標準。`grimoire`（魔導書）は個人利用向けの画像テーマで、
-/// `App/Resources/Themes/grimoire/` に置いた画像があればそれを使い、無ければ色だけで成立する。
-enum AppTheme: String, CaseIterable, Identifiable {
-    case dark
-    case grimoire
-    case grimoireDark
-    case tensura
-
-    var id: String { rawValue }
-    var label: String {
-        switch self {
-        case .dark: return "ダーク"
-        case .grimoire: return "フリーレン 白"
-        case .grimoireDark: return "フリーレン 黒"
-        case .tensura: return "転スラ"
-        }
-    }
-
-    /// 画像テーマか（画像フォルダを持つ）
-    var hasAssets: Bool { self != .dark }
-
-    /// 画像フォルダ名（`Themes/<folder>/`）。無いファイルは `fallbackFolder` から探す
-    var assetFolder: String {
-        switch self {
-        case .dark: return ""
-        case .grimoire: return "grimoire"
-        case .grimoireDark: return "grimoire_dark"
-        case .tensura: return "tensura"
-        }
-    }
-    var fallbackFolder: String? { self == .grimoireDark ? "grimoire" : nil }
-
+/// テーマ（F-49 / F-58）。`dark` が従来の標準。画像テーマは `App/Resources/Themes/<folder>/` の画像を使い、無ければ色だけで成立する。
+///
+/// 2026-11-09 から enum ではなく値型。組み込みの 4 つに加えて、フォルダに `theme.json`（`ThemeSpec`）を置いたテーマを起動時に見つけて増やす。
+/// `theme.json` は配色・書体の上書きと、ホーム 1 画面の部品の配置（`HomeLayout`）を持つ。画面側のコードはテーマを意識しない。
+struct AppTheme: Identifiable, Hashable {
+    let id: String
+    let label: String
+    /// 画像フォルダ名（`Themes/<folder>/`）。空なら画像なし。無いファイルは `fallbackFolder` から探す
+    let assetFolder: String
+    let fallbackFolder: String?
     /// 明るい地のテーマか。システムの配色（シート・コントロール）もこれに合わせる
-    var isLight: Bool { self == .grimoire }
-    var colorScheme: ColorScheme { isLight ? .light : .dark }
-
-    var palette: ThemePalette {
-        switch self {
-        case .dark: return .dark
-        case .grimoire: return .grimoire
-        case .grimoireDark: return .grimoireDark
-        case .tensura: return .tensura
-        }
-    }
-
+    let isLight: Bool
+    let palette: ThemePalette
     /// 文字のデザイン。魔導書はセリフ体（New York）
-    var fontDesign: Font.Design {
-        switch self {
-        case .dark, .tensura: return .default
-        case .grimoire, .grimoireDark: return .serif
+    let fontDesign: Font.Design
+    let numberDesign: Font.Design
+    /// `theme.json` の内容（組み込みテーマは nil）
+    let spec: ThemeSpec?
+
+    var rawValue: String { id }
+    var hasAssets: Bool { !assetFolder.isEmpty }
+    var colorScheme: ColorScheme { isLight ? .light : .dark }
+    /// ホーム 1 画面の配置（あればホームは部品を JSON の座標に並べる。F-58）
+    var home: HomeLayout? { spec?.home }
+
+    static func == (l: AppTheme, r: AppTheme) -> Bool { l.id == r.id }
+    func hash(into h: inout Hasher) { h.combine(id) }
+
+    // MARK: 組み込み
+
+    static let dark = AppTheme(id: "dark", label: "ダーク", assetFolder: "", fallbackFolder: nil, isLight: false, palette: .dark, fontDesign: .default, numberDesign: .rounded, spec: nil)
+    static let grimoire = AppTheme(id: "grimoire", label: "フリーレン 白", assetFolder: "grimoire", fallbackFolder: nil, isLight: true, palette: .grimoire, fontDesign: .serif, numberDesign: .serif, spec: nil)
+    static let grimoireDark = AppTheme(id: "grimoireDark", label: "フリーレン 黒", assetFolder: "grimoire_dark", fallbackFolder: "grimoire", isLight: false, palette: .grimoireDark, fontDesign: .serif, numberDesign: .serif, spec: nil)
+    static let tensura = AppTheme(id: "tensura", label: "転スラ", assetFolder: "tensura", fallbackFolder: nil, isLight: false, palette: .tensura, fontDesign: .default, numberDesign: .rounded, spec: nil)
+    static let builtIns: [AppTheme] = [.dark, .grimoire, .grimoireDark, .tensura]
+
+    /// 組み込み＋フォルダのテーマ（起動時に 1 回探す）
+    @MainActor static var all: [AppTheme] {
+        if let cached = allCache { return cached }
+        let found = discovered()
+        // 組み込みと同じ id の theme.json はそれを上書きとして使う
+        var list: [AppTheme] = builtIns.map { b in found.first { $0.id == b.id } ?? b }
+        list += found.filter { f in !builtIns.contains { $0.id == f.id } }
+        allCache = list
+        return list
+    }
+    @MainActor private static var allCache: [AppTheme]?
+
+    @MainActor static func find(id: String) -> AppTheme? { all.first { $0.id == id } }
+
+    /// `Themes/*/theme.json` を探す（フォルダ参照の置かれ方の違いに備えて 2 階層まで）
+    @MainActor private static func discovered() -> [AppTheme] {
+        guard let root = Bundle.main.resourceURL else { return [] }
+        let fm = FileManager.default
+        var dirs: [URL] = []
+        for base in [root.appendingPathComponent("Themes"), root] {
+            guard let items = try? fm.contentsOfDirectory(at: base, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) else { continue }
+            for url in items where (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true {
+                if fm.fileExists(atPath: url.appendingPathComponent("theme.json").path) { dirs.append(url) }
+            }
+        }
+        var seen = Set<String>()
+        return dirs.compactMap { dir -> AppTheme? in
+            let folder = dir.lastPathComponent
+            guard seen.insert(folder).inserted, let data = try? Data(contentsOf: dir.appendingPathComponent("theme.json")),
+                  let spec = try? ThemeSpec.parse(data) else { return nil }
+            return AppTheme(folder: folder, spec: spec)
         }
     }
 
-    var numberDesign: Font.Design {
-        switch self {
-        case .dark, .tensura: return .rounded
-        case .grimoire, .grimoireDark: return .serif
+    /// `theme.json` から作る。土台（base）の配色・書体に、colors / fonts / light を重ねる
+    init(folder: String, spec: ThemeSpec) {
+        let baseID = spec.base ?? (Self.builtIns.first { $0.assetFolder == folder }?.id ?? "dark")
+        let base = Self.builtIns.first { $0.id == baseID } ?? .dark
+        id = Self.builtIns.contains { $0.assetFolder == folder } ? base.id : folder
+        label = spec.label
+        assetFolder = folder
+        fallbackFolder = spec.fallbackFolder ?? (base.assetFolder == folder ? base.fallbackFolder : (base.assetFolder.isEmpty ? nil : base.assetFolder))
+        isLight = spec.light ?? base.isLight
+        palette = base.palette.applying(spec.parsedColors)
+        fontDesign = Self.design(spec.fonts?.text) ?? base.fontDesign
+        numberDesign = Self.design(spec.fonts?.number) ?? base.numberDesign
+        self.spec = spec
+    }
+
+    private init(id: String, label: String, assetFolder: String, fallbackFolder: String?, isLight: Bool, palette: ThemePalette, fontDesign: Font.Design, numberDesign: Font.Design, spec: ThemeSpec?) {
+        self.id = id; self.label = label; self.assetFolder = assetFolder; self.fallbackFolder = fallbackFolder; self.isLight = isLight
+        self.palette = palette; self.fontDesign = fontDesign; self.numberDesign = numberDesign; self.spec = spec
+    }
+
+    private static func design(_ s: String?) -> Font.Design? {
+        switch s {
+        case "serif": return .serif
+        case "rounded": return .rounded
+        case "monospaced": return .monospaced
+        case "default": return .default
+        default: return nil
         }
     }
 }
@@ -83,6 +124,22 @@ struct ThemePalette {
     var panel: Color
     /// 背景画像の上に敷く幕（文字の読みやすさのため）。`.clear` で無し
     var scrim: Color
+
+    /// `theme.json` の colors で上書きする（キーは ThemeSpec の説明のとおり）
+    func applying(_ colors: [String: HexColor]) -> ThemePalette {
+        guard !colors.isEmpty else { return self }
+        func c(_ key: String, _ current: Color) -> Color {
+            guard let h = colors[key] else { return current }
+            return Color(red: h.r, green: h.g, blue: h.b, opacity: h.a)
+        }
+        var p = self
+        p.background = c("background", p.background); p.surface = c("surface", p.surface); p.surfaceRaised = c("surfaceRaised", p.surfaceRaised)
+        p.accent = c("accent", p.accent); p.secondary = c("secondary", p.secondary); p.sun = c("sun", p.sun); p.daylight = c("daylight", p.daylight)
+        p.textPrimary = c("textPrimary", p.textPrimary); p.textSecondary = c("textSecondary", p.textSecondary); p.textTertiary = c("textTertiary", p.textTertiary)
+        p.faded = c("faded", p.faded); p.sea = c("sea", p.sea); p.moon = c("moon", p.moon); p.saturday = c("saturday", p.saturday); p.holiday = c("holiday", p.holiday)
+        p.panel = c("panel", p.panel); p.scrim = c("scrim", p.scrim)
+        return p
+    }
 
     static let dark = ThemePalette(
         background: Color(red: 0.043, green: 0.043, blue: 0.047),   // #0B0B0C
@@ -183,7 +240,7 @@ final class ThemeStore {
     }
 
     private init() {
-        theme = AppTheme(rawValue: UserDefaults.standard.string(forKey: Self.key) ?? "") ?? .dark
+        theme = AppTheme.find(id: UserDefaults.standard.string(forKey: Self.key) ?? "") ?? .dark
     }
 }
 
@@ -253,16 +310,20 @@ enum ThemeAssets {
     static func image(_ name: Name, theme: AppTheme) -> UIImage? { load(name, theme: theme)?.image }
 
     static func load(_ name: Name) -> Loaded? { load(name, theme: ThemeStore.shared.theme) }
+    static func load(_ name: Name, theme: AppTheme) -> Loaded? { load(named: name.rawValue, theme: theme) }
 
-    static func load(_ name: Name, theme: AppTheme) -> Loaded? {
-        guard theme.hasAssets else { return nil }
-        let key = "\(theme.rawValue)/\(name.rawValue)"
+    /// 任意のファイル名で読む（`theme.json` の layers / button が使う。F-58）
+    static func load(named raw: String) -> Loaded? { load(named: raw, theme: ThemeStore.shared.theme) }
+
+    static func load(named raw: String, theme: AppTheme) -> Loaded? {
+        guard theme.hasAssets, !raw.isEmpty, !raw.contains("/"), !raw.contains("..") else { return nil }
+        let key = "\(theme.rawValue)/\(raw)"
         if let cached = cache[key] { return cached }
         var found: Loaded?
         let dirs = [directory(for: theme), theme.fallbackFolder.flatMap { directory(named: $0) }].compactMap { $0 }
         search: for dir in dirs {
             for ext in ["png", "jpg", "jpeg", "PNG", "JPG"] {
-                let url = dir.appendingPathComponent("\(name.rawValue).\(ext)")
+                let url = dir.appendingPathComponent("\(raw).\(ext)")
                 if FileManager.default.fileExists(atPath: url.path), let image = UIImage(contentsOfFile: url.path) {
                     found = prepare(image)
                     break search

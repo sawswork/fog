@@ -3,6 +3,38 @@
 新しい決定は上に追加する。形式：日付 / 決定 / 理由 / 影響範囲。
 Claude Code が設計判断で迷ったら、まずここに「提案」として書き、PR で問う。
 
+## 2026-11-09 L34 要望まとめ（所有者変更・イカ・潮名・手動運用・釣り人と共有・拡大・経路・速度・地図のレイアウト）
+
+| 決定 | 理由 | 影響 |
+| --- | --- | --- |
+| 潮名は「月齢の整数部」の表（大潮 0〜2・14〜17・29、中潮 3〜6・12〜13・18〜21・27〜28、小潮 7〜9・22〜24、長潮 10・25、若潮 11・26）で、その日の正午の月齢から決める | 以前は整数部 +1 を旧暦の日と見なして 1 日ずれ、新月前日（11/8、月齢 28.x）が大潮になっていた（実機フィードバック）。釣り情報サイト・潮汐表と同じ表に揃える | `TideName.from/on`, `EnvSnapshotBuilder`, `DataRepairs`（過去の記録を直してレポートを作り直す） |
+| 位置情報での自動開始・終了（F-01）は既定オフ。開始・終了はホームのボタンか撮影。位置は記録中（100 m・50 m 間隔、背景可）と地図・撮影を開いている間（10 m・15 m 間隔、前面のみ）だけ | 開発者「精度が良くないと電池の減りが早い」。撮影画面を開くと `probe()` が標準更新を始めたまま止めておらず、電池を使い続けていたのも直した | `LocationService`, `SessionDetectionService.autoDetectionEnabled`, `DetectionSettingsView` |
+| 撮影で始まった釣行も「記録中」にし、終了はホームのボタン。最後の動きから 8 時間で自動終了 | 位置で終わらなくなったので、忘れたときの保険 | `SessionDetectionService.adopt/endStaleSessionIfNeeded` |
+| 釣った人は `Catch.angler`（nil は自分）。他の人の魚は釣行の尾数と共有にだけ入り、図鑑・自己記録・釣れ率の学習には入れない（`FogStore.ownSessions`） | 「釣った人はわかるように」。自分の記録を他人の魚で汚さない | `AnglerSettings`, `CaptureViewModel.angler`, `CatchEditSheet` |
+| 仲間との共有は CloudKit の**公開データベース**（同じコンテナ）。送るのは要約（魚種・サイズ・時刻・位置・釣り場名・釣った人・サムネイル）だけ。写真本体は送らない。取得は 30 分に 1 回、全件 | 2 人は別の Apple ID なのでプライベート DB の同期では届かない。CKShare は SwiftData から使えない。自前サーバーは原則 3 に反する。公開 DB はこのアプリを入れた人しか読めず、アプリは 2 台だけ。**原則 3 の例外として開発者の指示で許容** | `PartyService`, `SharedCatch`（Core）。開発者の作業：CloudKit Console で `SharedCatch` を Production に配備 |
+| 仲間の釣果は「釣果情報」として見せる（一覧の先頭の区画と、地図の魚のピン）。自分の図鑑・統計には入れない | 開発者「他の人の端末でも釣果情報として見れるように」 | `FeedView`, `SpotsViewModel.feedPins` |
+| LiDAR の無い端末（iPhone 17）でも ARKit のカメラは動かし、サイズ未計測で記録する | 同行者の端末でも撮れるように。F-12 の既存の扱い | `CaptureView` |
+| 車の所要時間・経路は MapKit（`MKDirections`）。所要時間は釣り場ごとに 1 回、出発地が 500 m 動いたら取り直し、同時 3 件まで。ターンバイターンの案内は Apple のマップに渡す | 逆ジオコーディング・衛星写真と同じ Apple の地図の範囲で、原則 3 の取得元を増やさない。アプリ内の案内は電池と画面の制約で見送り | `SpotsViewModel.requestETA/toggleRoute/openInMaps` |
+| 釣り場画面はカードの横並びをやめ、右下の縦リスト（名前・釣れ率・距離か車の時間）と、選ぶと左に出る四角い詳細パネル（航空写真・数字・ボタン） | 開発者の指示 | `SpotsView.cards`, `SpotListRow`, `SpotDetailPanel` |
+| 未登録の漁港も詳細を開ける（`HomeViewModel.fixedSpot`）。登録は詳細から | 開発者の指示 | `SpotDetailView` |
+| ホームの魚種別スコア（右脇の「89 アイナメ」）を外す。魚種別は年間カレンダーの切替に残す | 開発者「不要」 | `HomeView.scoreArea` |
+| 画面の状態（`HomeViewModel`/`LogViewModel`/`SpotsViewModel`）は `AppServices` に常駐させ、タブ切替で捨てない | タブに戻るたびに 31 日分のキャッシュと学習を作り直していた | `AppServices`, 各 View |
+| ストアの保存を「分析に影響する」「しない（立ち位置・気圧・スナップショットの追記）」に分け、後者は画面に通知せず `analysisRevision` も進めない | 釣行中は 25 m ごとの保存で全画面が再計算され、固まっていた | `FogStore.upsert(_:minor:)`, `HomeViewModel.timelineKey` |
+| ARKit のフレームはロック付きの箱に最新だけ持ち、解析は ARKit のスレッドで 6 フレームに 1 回。メインへは結果だけ | 毎フレーム Task を投げてピクセルバッファを握っていたため、メインが忙しいとバッファが枯渇してカメラが止まった（「撮影画面が開かない」の原因と考える） | `DepthCaptureSession`, `FrameAnalyzer` |
+| 釣り場カード・港候補・比較の釣れ率は `scoreSnapshot`（次の満干を探さない） | 地図を動かすたびに 60 港 × 満干探索をメインで回していた | `EnvSnapshotBuilder.buildForScore`, `EnvironmentService.scoreSnapshot` |
+| 足場タグ（F-31）を `CatchRecord.sceneTagsData` に保存する | これまで保存されておらず、再起動で消えていた | `CatchRecord` |
+| 釣果の位置は、撮影画面を開いている間の 10 m 精度の最新位置を最優先にする（10 分以内）。以前は 100 m 精度の立ち位置が先だった | 開発者「ログの釣れた地点の精度が悪い」。GPS の限界（開けた港で 5〜10 m）までは出せる | `CaptureViewModel.depthCoordinate`, `LocationService.beginForegroundUpdates` |
+| 日付は端末の言語に関わらず日本語表記（`JPFormat`）。図鑑の魚種詳細・釣行詳細は見出し付きの区画に分ける | 開発者「パッと見で分かりづらい」。端末が英語設定で「Nov 8」と出ていた | `JPFormat`, `SpeciesDetailView`, `SessionDetailView` |
+| テーマは `theme.json`（Core の `ThemeSpec`）で定義する。配色・書体の上書きと、ホーム 1 画面の部品の配置（`HomeLayout`：画像の層と部品を画面に対する割合の座標に置く）。`AppTheme` は enum から値型にし、`Themes/*/theme.json` を起動時に探す。ホームは配置があれば `HomeView.composed` で部品を並べ、無ければ従来の縦積み | 開発者「今後様々な配置やレイアウト、画像を使ってテーマを変えていく。対応しやすいように」。画像とキャラクターは Gemini で作って置くだけにし、配置も JSON で済ませてコードを触らない | `ThemeSpec`（Core）, `AppTheme`, `HomeView.composed`, `HomeBlocks`, `TabIconsRow`, `docs/07_theme_spec.md` |
+| 配置のあるテーマはタブバーを消せる（`hidesTabBar`）。画面の行き来は `nav` / `button` の部品で、ホーム以外の画面には右下に「ホームへ戻る」ボタンを出す | 参考イメージは下のメニューが無い 1 枚の画面。戻れなくならないための最小の逃げ道 | `RootTabView`, `switchTab` 環境値 |
+| 部品の座標は安全領域を含む全画面の割合。`header` だけ上の安全領域を自動で避け、`nav` は下を避ける | 画像テーマは全画面に敷きたい。ノッチの下に文字が入らないように | `HomeView.composed` |
+| **保留**：漁港の詳細な地形マップに「どこで釣れそうか」を表現する機能 | 港内の水深・海底の起伏・捨て石の位置を示す公開データが無い（海上保安庁の海図は有償、国土数値情報の港データは点だけ、Open-Meteo は数 km 格子）。自分と仲間の釣果の点（F-47）と根掛かりの点で代える | 開発者の了承どおり保留 |
+
+### バックグラウンドの動作（開発者の質問への答え）
+
+このアプリが背景で動くのは次のときだけにした：(1) 釣行の記録中の位置更新（100 m 精度・50 m 間隔）と 30 分ごとのスナップショット、(2) ウィジェットの更新（15 分）、(3) 通知の予約。
+これまでは撮影画面を一度開くと位置の標準更新が止まらず、さらに Visits と大きな移動の監視が常に動いていた。これが「iPhone が重い・電池が減る」の原因の候補。自動検出をオフにした今はどちらも動かない。
+
 ## 2026-11-06 L33 フリーレン 黒
 
 | 決定 | 理由 | 影響 |
@@ -465,7 +497,7 @@ Claude Code が設計判断で迷ったら、まずここに「提案」とし�
 
 ## 提案（未決）
 
-- （実施済み 2026-11-05）釣果情報の「お任せ収集」は公開リポジトリ `knowlsaws/fog-feeds` の GitHub Actions（3 時間ごと）で実現。`docs/hokkaido.xml`（全道）と `docs/hakodate.xml`（函館周辺）をアプリに登録する
+- （実施済み 2026-11-05）釣果情報の「お任せ収集」は公開リポジトリ `sawswork/fog-feeds` の GitHub Actions（3 時間ごと）で実現。`docs/hokkaido.xml`（全道）と `docs/hakodate.xml`（函館周辺）をアプリに登録する
 
 - Siri 連携：アプリに Siri を埋め込む API は無い。Siri から使わせるなら App Intents で「釣れ率」「天気と潮」「比較」「統計」「タックル」を公開する。アプリ内チャットは Foundation Models（端末内、ウェブ知識なし）で作れる。一般知識を聞くなら外部 AI（Claude API）への送信が要り、原則 3 の例外になる。2026-11-05 開発者が保留
 - 地図の風・流れ・水温の可視化（Windy 風）：Open-Meteo の格子（気象 約 11 km、海況 約 5 km）を 1 回の呼び出しで取り、釣り場画面の地図に風の矢印・流れの矢印・水温の色面と時刻バーを重ねる案。Windy の埋め込みは外部ドメインへの通信になるので使わない

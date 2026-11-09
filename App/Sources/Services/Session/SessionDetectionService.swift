@@ -3,13 +3,25 @@ import CoreLocation
 import Core
 import os
 
-/// 釣行の自動開始・終了（F-01）、釣り場の自動登録（F-02）、立ち位置のポイント化（§3）。
+/// 釣行の開始・終了、釣り場の自動登録（F-02）、立ち位置のポイント化（§3）。
 /// 位置は `LocationService`、判定は Core の `SessionDetector`、保存は `FogStore`、環境は `SnapshotScheduler`。
+///
+/// 2026-11-09：位置情報での自動開始・終了（F-01）は既定でオフ（精度と電池の問題。開発者の指示）。
+/// 開始・終了はホームのボタン（F-48）か撮影で行い、記録中の立ち位置だけ低頻度で記録する。自動検出は 設定 > 自動検出 でオンにできる。
 @MainActor
 @Observable
 final class SessionDetectionService {
     static let sensitivityKey = "fog.detectionSensitivity"
+    static let autoDetectKey = "fog.detection.autoEnabled"
     static let registeredSpotRadiusM: Double = 300
+    /// 手動で始めた（撮影で始まった）釣行を忘れていたとき、最後の動き（開始・釣果・針）からこの時間で自動的に終える
+    static let staleSessionAfter: TimeInterval = 8 * 3600
+
+    /// 位置情報での自動開始・終了。既定はオフ
+    static var autoDetectionEnabled: Bool {
+        get { UserDefaults.standard.bool(forKey: autoDetectKey) }
+        set { UserDefaults.standard.set(newValue, forKey: autoDetectKey) }
+    }
 
     private(set) var detector: SessionDetector
     private(set) var activeSessionID: UUID?
@@ -46,15 +58,30 @@ final class SessionDetectionService {
         detector.settings = .forSensitivity(s)
     }
 
+    /// 設定 > 自動検出 のオンオフ。オンにしたら「常に許可」を求めて監視を始め、オフにしたら監視を止める
+    func applyAutoDetection(_ enabled: Bool) {
+        Self.autoDetectionEnabled = enabled
+        location.wantsAlwaysAuthorization = enabled
+        if enabled {
+            location.requestAuthorization()
+            if activeSessionID == nil { location.startMonitoring() }
+        } else {
+            detector.reset()
+            if activeSessionID == nil { location.stopTracking(monitor: false) }
+        }
+    }
+
     // MARK: 起動
 
     func start() {
         SessionNotifications.registerCategories()
+        location.wantsAlwaysAuthorization = Self.autoDetectionEnabled
         location.requestAuthorization()
+        endStaleSessionIfNeeded()
         // 記録中の釣行が残っていれば引き継ぐ（アプリ再起動後）
         if let active = try? store.activeSession() {
             resumeTracking(session: active)
-        } else {
+        } else if Self.autoDetectionEnabled {
             location.startMonitoring()
         }
         task?.cancel()
@@ -64,6 +91,17 @@ final class SessionDetectionService {
                 await self.handle(fix)
             }
         }
+    }
+
+    /// 忘れられた釣行を終える：最後の動きから 8 時間以上たった記録中の釣行は、最後の動きの 1 時間後に終わったことにする
+    /// （自動検出をやめたので、位置で終わらない。起動時と前面復帰時に呼ぶ）
+    func endStaleSessionIfNeeded(now: Date = .now) {
+        guard let active = try? store.activeSession() else { return }
+        let lastActivity = ([active.startedAt] + active.catches.map(\.at) + active.hookEvents.map(\.at)).max() ?? active.startedAt
+        guard now.timeIntervalSince(lastActivity) > Self.staleSessionAfter else { return }
+        activeSessionID = active.id
+        activeSpotName = (try? store.spot(id: active.spotID))?.name
+        Task { await endSession(at: lastActivity.addingTimeInterval(3600)) }
     }
 
     private func resumeTracking(session: Core.Session) {
@@ -80,6 +118,14 @@ final class SessionDetectionService {
     func handle(_ fix: LocationFix) async {
         // 起動直後に届く古い位置（前回の記憶）は捨てる。これを候補の開始時刻にすると、次の位置で滞在時間が一気に満たされて即開始してしまう
         guard Date.now.timeIntervalSince(fix.at) < 120 else { return }
+        // 自動検出オフ：記録中なら立ち位置だけ記録する（逆ジオコーディングも状態機械も使わない）
+        guard Self.autoDetectionEnabled else {
+            if activeSessionID != nil, fix.horizontalAccuracyM <= 200 {
+                scheduler.currentCoordinate = fix.coordinate
+                recordTrackIfMoved(fix)
+            }
+            return
+        }
         let context = await context(for: fix)
         let events = detector.handle(fix, context: context)
         for event in events {
@@ -140,7 +186,8 @@ final class SessionDetectionService {
         WidgetSync.setRecording(true)
         location.startTracking()
         scheduler.start(session: session, coordinate: anchor)
-        SessionNotifications.sessionStarted(spotName: spot.name, sessionID: session.id)
+        // 開始の通知は自動検出のときだけ（自分で押したときに「始めました」と言われても意味がない）
+        if !manual { SessionNotifications.sessionStarted(spotName: spot.name, sessionID: session.id) }
         SafetyNotifier.schedule(at: at, coordinate: anchor, environment: environment)
         Self.log.info("session started at \(spot.name, privacy: .public)")
     }
@@ -171,7 +218,7 @@ final class SessionDetectionService {
         scheduler.stop()
         SafetyNotifier.cancel()
         if snagMeshKey != nil { snagMeshKey = nil; WidgetSync.setSnagZone(false) }
-        location.startMonitoring()
+        location.stopTracking(monitor: Self.autoDetectionEnabled)
         lastEndedSessionID = id
         activeSessionID = nil
         WidgetSync.setRecording(false)
@@ -180,10 +227,18 @@ final class SessionDetectionService {
         Self.log.info("session ended with \(session.catches.count) catches")
     }
 
+    /// 手動運用の立ち位置：前の点から 25 m 以上か 10 分以上たったときだけ追加
+    private func recordTrackIfMoved(_ fix: LocationFix) {
+        guard let id = activeSessionID, let session = try? store.session(id: id) else { return }
+        if let last = session.track.last, Geo.distanceMeters(last.coordinate, fix.coordinate) < 25, fix.at.timeIntervalSince(last.at) < 600 { return }
+        recordTrack(TrackSample(at: fix.at, coordinate: fix.coordinate))
+    }
+
     private func recordTrack(_ sample: TrackSample) {
         guard let id = activeSessionID, var session = try? store.session(id: id) else { return }
         session.track.append(sample)
-        try? store.upsert(session)
+        // 立ち位置の追記は分析に影響しない（画面の再計算を起こさない）
+        try? store.upsert(session, minor: true)
         // メッシュのポイントを用意しておく（釣果・針ロストが紐付く単位）
         let key = Mesh.key(for: sample.coordinate)
         if let points = try? store.points(spotID: session.spotID), !points.contains(where: { $0.meshKey == key }) {
@@ -236,12 +291,31 @@ final class SessionDetectionService {
     func startManually() async -> Bool {
         guard activeSessionID == nil else { return true }
         location.requestAuthorization()
+        // 最近の位置が無ければ数秒だけ待って取る（開いた直後に押されることが多い）
+        if location.lastFix.map({ Date.now.timeIntervalSince($0.at) > 30 * 60 }) ?? true {
+            location.probe(seconds: 20)
+            for _ in 0..<8 {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                if let f = location.lastFix, Date.now.timeIntervalSince(f.at) < 60 { break }
+            }
+        }
         guard let target = manualStartCoordinate() else { return false }
         let now = Date.now
         detector.beginManually(at: now, anchor: target.coordinate)
         await startSession(at: now, anchor: target.coordinate, spotID: target.spotID, manual: true)
-        location.probe()
         return activeSessionID != nil
+    }
+
+    /// 撮影で釣行が始まったとき（`CaptureService.ensureSession`）に呼ぶ：立ち位置の記録と環境スナップショットを始める
+    func adopt(session: Core.Session, coordinate: Coordinate) {
+        guard activeSessionID == nil, session.isActive else { return }
+        detector.beginManually(at: session.startedAt, anchor: coordinate)
+        activeSessionID = session.id
+        activeSpotName = (try? store.spot(id: session.spotID))?.name
+        WidgetSync.setRecording(true)
+        location.startTracking()
+        scheduler.start(session: session, coordinate: coordinate)
+        SafetyNotifier.schedule(at: session.startedAt, coordinate: coordinate, environment: environment)
     }
 
     /// ワンタップで今すぐ終える。その場に居続けても自動では再開しない（離れるまで開始判定を止める）
@@ -288,7 +362,7 @@ final class SessionDetectionService {
         if activeSessionID == sessionID {
             scheduler.stop()
             SafetyNotifier.cancel()
-            location.startMonitoring()
+            location.stopTracking(monitor: Self.autoDetectionEnabled)
             activeSessionID = nil
             detector.reset()
             WidgetSync.setRecording(false)

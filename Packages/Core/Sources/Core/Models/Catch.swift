@@ -37,6 +37,8 @@ public struct Catch: Codable, Identifiable, Hashable, Sendable {
     public var released: Bool
     /// 写真の背景から推定した足場・時間帯・天気（F-31）。古いデータは nil
     public var sceneTags: [String]?
+    /// 釣った人（F-54）。nil は自分（この端末の持ち主）。他の人の魚を自分の端末で撮ったときに名前が入る
+    public var angler: String?
 
     public init(
         id: UUID = UUID(),
@@ -57,7 +59,8 @@ public struct Catch: Codable, Identifiable, Hashable, Sendable {
         speciesCorrected: Bool = false,
         photoLocalIdentifiers: [String] = [],
         tackleID: UUID? = nil,
-        sceneTags: [String]? = nil
+        sceneTags: [String]? = nil,
+        angler: String? = nil
     ) {
         self.id = id
         self.sessionID = sessionID
@@ -78,6 +81,14 @@ public struct Catch: Codable, Identifiable, Hashable, Sendable {
         self.env = env
         self.released = released
         self.sceneTags = sceneTags
+        self.angler = angler
+    }
+
+    /// 自分の釣果か。`ownName` は設定した自分の名前（nil や空なら、名前の入っていない釣果だけが自分）
+    public func isOwn(ownName: String?) -> Bool {
+        guard let angler, !angler.isEmpty else { return true }
+        guard let ownName, !ownName.isEmpty else { return false }
+        return angler == ownName
     }
 
     public var isSizeMeasured: Bool { lengthCm != nil }

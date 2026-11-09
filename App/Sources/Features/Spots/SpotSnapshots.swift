@@ -52,9 +52,18 @@ struct SpotSnapshotView: View {
     var catchPoints: [Coordinate] = []
     var lossPoints: [Coordinate] = []
     var feedPoints: [Coordinate] = []
+    /// 表示の幅（nil なら写真そのままの 120×76）。詳細パネルでは大きく出す
+    var displayWidth: CGFloat? = nil
     @State private var snapshot: MKMapSnapshotter.Snapshot?
 
     var body: some View {
+        let k = (displayWidth ?? SpotSnapshots.size.width) / SpotSnapshots.size.width
+        content
+            .scaleEffect(k, anchor: .topLeading)
+            .frame(width: SpotSnapshots.size.width * k, height: SpotSnapshots.size.height * k)
+    }
+
+    private var content: some View {
         ZStack(alignment: .topTrailing) {
             if let snapshot {
                 Image(uiImage: snapshot.image).resizable().scaledToFill()

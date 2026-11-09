@@ -12,6 +12,7 @@
 4. `docs/04_decisions.md` — 決定事項ログ。迷ったらここに書いてから進む
 5. `docs/research/data_sources.md` — 潮汐・海況・釣果情報の取得元の調査結果
 6. `docs/06_device_verification.md` — 実機検証チェックリスト（L16、開発者が iPhone で確認する項目）
+7. `docs/07_theme_spec.md` — テーマ定義 `theme.json`（配色・書体・ホームの部品の配置。テーマはコードを触らずフォルダで増やす）
 
 ## 絶対に守る3原則
 

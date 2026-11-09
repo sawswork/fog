@@ -18,3 +18,8 @@
 | ヒラメ | | 低 | Paralichthys olivaceus |
 | ブリ（イナダ・フクラギ） | | 低 | Seriola quinqueradiata |
 | サクラマス | | 低 | Oncorhynchus masou |
+| ヤリイカ | ヤリ、テナシ | 中（2026-11-09 追加） | Heterololigo bleekeri |
+| スルメイカ | マイカ、イカ | 中（2026-11-09 追加） | Todarodes pacificus |
+| ヒイカ | ジンドウイカ、コイカ | 低（2026-11-09 追加） | Loliolus japonica |
+
+イカ類は全長ではなく胴長で測るのが通例なので、図鑑の見出しに「胴長」と添える（LiDAR の計測はそのまま）。

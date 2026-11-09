@@ -84,7 +84,8 @@ struct GuideView: View {
     }
 
     private func reload() {
-        let sessions = (try? services.store.sessions()) ?? []
+        // 図鑑は自分が釣った魚だけ（他の人の魚を自分の端末で撮った分は入れない。F-54）
+        let sessions = (try? services.store.ownSessions()) ?? []
         entries = Guide.entries(sessions: sessions)
     }
 }
@@ -133,66 +134,113 @@ struct SpeciesDetailView: View {
     @State private var catches: [Catch] = []
     @State private var spots: [UUID: Spot] = [:]
     @State private var editing: Catch?
+    /// 写真をタップで全画面（ピンチで拡大。F-55）
+    @State private var viewing: Catch?
 
     var body: some View {
         GeometryReader { geo in
-            VStack(spacing: DS.Spacing.m) {
+            VStack(spacing: DS.Spacing.s) {
+                // ベストショット（タップで全画面）。左下に魚種名と最大サイズ
                 ZStack(alignment: .bottomLeading) {
                     if let data = services.store.thumbnail(catchID: entry.bestCatchID), let ui = UIImage(data: data) {
                         Image(uiImage: ui).resizable().scaledToFill()
                     } else { DS.Color.surface }
-                    LinearGradient(colors: [.clear, DS.Color.background], startPoint: .center, endPoint: .bottom)
-                    Text(entry.species).font(DS.Font.number(28)).foregroundStyle(DS.Color.textPrimary).padding(DS.Spacing.l)
-                }
-                .frame(height: geo.size.height * 0.36).clipped()
-                HStack(spacing: DS.Spacing.l) {
-                    stat(entry.maxLengthCm.map { "\(Int($0.rounded()))" } ?? "—", "cm 最大")
-                    stat("\(entry.count)", "尾")
-                    stat(entry.firstCaughtAt.formatted(.dateTime.month().day()), "初")
-                    stat(entry.lastCaughtAt.formatted(.dateTime.month().day()), "最後")
-                }
-                .padding(.horizontal, DS.Spacing.l)
-                sizeTrend.padding(.horizontal, DS.Spacing.l)
-                HStack(spacing: DS.Spacing.m) {
-                    distribution("時間帯", entry.conditions.byLight)
-                    distribution("潮", entry.conditions.byTide)
-                    distribution("水温", Dictionary(uniqueKeysWithValues: entry.conditions.bySeaTemp.map { ("\($0.key)", $0.value) }))
-                    distribution("月", Dictionary(uniqueKeysWithValues: entry.conditions.byMonth.map { ("\($0.key)月", $0.value) }))
-                }
-                .padding(.horizontal, DS.Spacing.l)
-                HStack(spacing: DS.Spacing.m) {
-                    ForEach(entry.topSpots, id: \.spotID) { s in
-                        HStack(spacing: DS.Spacing.xs) {
-                            Text(spots[s.spotID]?.name ?? "釣り場").font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
-                            Text("\(s.count)").font(DS.Font.number(13)).foregroundStyle(DS.Color.textPrimary)
+                    LinearGradient(colors: [.clear, DS.Color.background.opacity(0.9)], startPoint: .center, endPoint: .bottom)
+                    HStack(alignment: .firstTextBaseline, spacing: DS.Spacing.s) {
+                        Text(entry.species).font(DS.Font.number(28)).foregroundStyle(DS.Color.textPrimary)
+                        if let l = entry.maxLengthCm {
+                            Text("最大 \(Int(l.rounded()))cm").font(DS.Font.number(16)).foregroundStyle(DS.Color.accent)
+                            if Species.lookup(entry.species)?.isSquid == true { Text("胴長").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary) }
                         }
+                        Spacer()
+                        Image(systemName: "arrow.up.left.and.arrow.down.right").font(.system(size: 12, weight: .bold)).foregroundStyle(DS.Color.textSecondary)
                     }
-                    Spacer()
+                    .padding(DS.Spacing.l)
                 }
-                .padding(.horizontal, DS.Spacing.l)
-                ScrollView(.horizontal, showsIndicators: false) {
+                .frame(height: geo.size.height * 0.30).clipped()
+                .contentShape(Rectangle())
+                .onTapGesture { if let best = catches.first(where: { $0.id == entry.bestCatchID }) { viewing = best } }
+
+                VStack(spacing: DS.Spacing.s) {
+                    // 数字 4 つ（ラベルを上に）
                     HStack(spacing: DS.Spacing.s) {
-                        ForEach(catches, id: \.id) { c in
-                            ZStack(alignment: .bottomLeading) {
-                                if let data = services.store.thumbnail(catchID: c.id), let ui = UIImage(data: data) {
-                                    Image(uiImage: ui).resizable().scaledToFill()
-                                } else { DS.Color.surface }
-                                Text(c.lengthCm.map { "\(Int($0.rounded()))" } ?? "—").font(DS.Font.number(12)).foregroundStyle(DS.Color.textPrimary).padding(4)
-                            }
-                            .frame(width: 72, height: 72)
-                            .clipShape(RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
-                            .onLongPressGesture { editing = c }
+                        stat("尾数", "\(entry.count)", unit: "尾")
+                        stat("最大", entry.maxLengthCm.map { "\(Int($0.rounded()))" } ?? "—", unit: "cm")
+                        stat("初めて", JPFormat.md(entry.firstCaughtAt))
+                        stat("最後", JPFormat.md(entry.lastCaughtAt))
+                    }
+                    section("サイズの推移（白い点は自己記録）") { sizeTrend }
+                    section("釣れやすい条件") {
+                        HStack(alignment: .top, spacing: DS.Spacing.m) {
+                            distribution("時間帯", entry.conditions.byLight)
+                            distribution("潮", entry.conditions.byTide)
+                            distribution("水温", Dictionary(uniqueKeysWithValues: entry.conditions.bySeaTemp.map { ("\($0.key)℃", $0.value) }))
+                            distribution("月", Dictionary(uniqueKeysWithValues: entry.conditions.byMonth.map { ("\($0.key)月", $0.value) }))
                         }
                     }
-                    .padding(.horizontal, DS.Spacing.l)
+                    section("釣れた場所") {
+                        HStack(spacing: DS.Spacing.l) {
+                            ForEach(entry.topSpots, id: \.spotID) { s in
+                                HStack(spacing: DS.Spacing.xs) {
+                                    Text(spots[s.spotID]?.name ?? "釣り場").font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
+                                    Text("\(s.count)尾").font(DS.Font.number(13)).foregroundStyle(DS.Color.textSecondary)
+                                }
+                            }
+                            Spacer()
+                        }
+                    }
+                    section("写真 · タップで拡大、長押しで修正（魚種・サイズ・リグ・釣った人）") {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: DS.Spacing.s) {
+                                ForEach(catches, id: \.id) { c in
+                                    VStack(spacing: 3) {
+                                        ZStack(alignment: .bottomLeading) {
+                                            if let data = services.store.thumbnail(catchID: c.id), let ui = UIImage(data: data) {
+                                                Image(uiImage: ui).resizable().scaledToFill()
+                                            } else { DS.Color.surface }
+                                            Text(c.lengthCm.map { "\(Int($0.rounded()))cm" } ?? "未計測").font(DS.Font.number(11)).foregroundStyle(.white)
+                                                .padding(.horizontal, 5).padding(.vertical, 2).background(Color.black.opacity(0.55), in: Capsule()).padding(4)
+                                        }
+                                        .frame(width: 72, height: 72)
+                                        .clipShape(RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
+                                        Text(JPFormat.mdhm(c.at)).font(.system(size: 9)).foregroundStyle(DS.Color.textTertiary)
+                                    }
+                                    .contentShape(Rectangle())
+                                    // タップで拡大（F-55）、長押しで修正（F-24）
+                                    .onTapGesture { viewing = c }
+                                    .onLongPressGesture { editing = c }
+                                }
+                            }
+                        }
+                        .frame(height: 90)
+                    }
                 }
-                .frame(height: 80)
+                .padding(.horizontal, DS.Spacing.l)
                 Spacer(minLength: 0)
             }
         }
         .background(ThemeBackground(name: .bgDetail))
         .onAppear(perform: reload)
-        .sheet(item: $editing) { c in CatchEditSheet(catchItem: c) { reload() }.presentationDetents([.medium]) }
+        .sheet(item: $editing) { c in CatchEditSheet(catchItem: c) { reload() }.presentationDetents([.large]) }
+        .fullScreenCover(item: $viewing) { c in PhotoViewer(catchItem: c) }
+    }
+
+    /// 見出し付きの区画（枠線なし、面で区切る）
+    private func section<C: View>(_ title: String, @ViewBuilder content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.xs) {
+            Text(title).font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+            content()
+        }
+        .padding(DS.Spacing.m)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
+    }
+
+    /// 計測した釣果が全部同じ日か（軸の表記を時刻にする）
+    private var sameDay: Bool {
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = JPFormat.tz
+        let days = Set(catches.compactMap { c in c.lengthCm == nil ? nil : cal.startOfDay(for: c.at) })
+        return days.count <= 1
     }
 
     /// サイズの推移（F-41）：計測した釣果を時系列に。自己記録の更新は白い点
@@ -212,7 +260,14 @@ struct SpeciesDetailView: View {
                         .foregroundStyle(records.contains(c.id) ? Color.white : DS.Color.accent).symbolSize(records.contains(c.id) ? 40 : 20)
                 }
                 .chartYAxis { AxisMarks(position: .leading) { _ in AxisValueLabel().font(.system(size: 9)).foregroundStyle(DS.Color.textTertiary) } }
-                .chartXAxis { AxisMarks(values: .automatic(desiredCount: 4)) { _ in AxisValueLabel(format: .dateTime.month().day()).font(.system(size: 9)).foregroundStyle(DS.Color.textTertiary) } }
+                .chartXAxis {
+                    AxisMarks(values: .automatic(desiredCount: 4)) { v in
+                        // 同じ日の釣果なら時刻、またがるなら月/日（「Nov 8」が 5 つ並ぶのをやめる）
+                        if let d = v.as(Date.self) {
+                            AxisValueLabel { Text(sameDay ? JPFormat.hm(d) : JPFormat.md(d)).font(.system(size: 9)).foregroundStyle(DS.Color.textTertiary) }
+                        }
+                    }
+                }
                 .frame(height: 64)
             } else {
                 Text("サイズを 2 尾以上計測すると推移が出ます").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary).frame(maxWidth: .infinity, alignment: .leading)
@@ -221,17 +276,22 @@ struct SpeciesDetailView: View {
     }
 
     private func reload() {
-        let sessions = (try? services.store.sessions()) ?? []
+        let sessions = (try? services.store.ownSessions()) ?? []
         catches = sessions.flatMap(\.catches).filter { $0.species == entry.species }.sorted { $0.at > $1.at }
         spots = Dictionary(uniqueKeysWithValues: ((try? services.store.spots()) ?? []).map { ($0.id, $0) })
     }
 
-    private func stat(_ value: String, _ label: String) -> some View {
+    private func stat(_ label: String, _ value: String, unit: String = "") -> some View {
         VStack(spacing: 2) {
-            Text(value).font(DS.Font.number(22)).foregroundStyle(DS.Color.textPrimary)
             Text(label).font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(value).font(DS.Font.number(20)).foregroundStyle(DS.Color.textPrimary)
+                if !unit.isEmpty { Text(unit).font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary) }
+            }
         }
         .frame(maxWidth: .infinity)
+        .padding(.vertical, DS.Spacing.s)
+        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
     }
 
     /// 小さな分布バー（横並び）
@@ -263,6 +323,10 @@ struct CatchEditSheet: View {
     @State private var species: String = ""
     @State private var lengthText: String = ""
     @State private var deleting: Catch?
+    @State private var angler: String = AnglerSettings.ownName
+    @State private var tackle: TackleKind?
+    @State private var rigID: UUID?
+    @State private var rigs: [Rig] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: DS.Spacing.m) {
@@ -293,9 +357,53 @@ struct CatchEditSheet: View {
                     .padding(DS.Spacing.m).background(DS.Color.surface, in: RoundedRectangle(cornerRadius: DS.Radius.chip))
                 Text("cm").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
             }
+            // タックルとリグ（シンカー・フック・ワーム）を後から設定する
+            HStack(spacing: DS.Spacing.s) {
+                Image(systemName: "wrench.and.screwdriver").font(.system(size: 11)).foregroundStyle(DS.Color.textTertiary)
+                ForEach([TackleKind.spinning, .bait], id: \.self) { k in
+                    Button { tackle = tackle == k ? nil : k } label: {
+                        Text(k == .spinning ? "スピニング" : "ベイト").font(DS.Font.caption).foregroundStyle(tackle == k ? DS.Color.background : DS.Color.textPrimary)
+                            .padding(.horizontal, DS.Spacing.m).padding(.vertical, DS.Spacing.xs)
+                            .background(tackle == k ? DS.Color.accent : DS.Color.surface, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer()
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: DS.Spacing.s) {
+                    if rigs.isEmpty {
+                        Text("リグは 設定 > タックル で登録（シンカー・フック・ワーム）").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+                    }
+                    ForEach(rigs) { r in
+                        Button { rigID = rigID == r.id ? nil : r.id } label: {
+                            Text(r.displayName).font(DS.Font.caption).foregroundStyle(rigID == r.id ? DS.Color.background : DS.Color.textPrimary)
+                                .padding(.horizontal, DS.Spacing.m).padding(.vertical, DS.Spacing.xs)
+                                .background(rigID == r.id ? DS.Color.accent : DS.Color.surface, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            // 釣った人（F-54）
+            if AnglerSettings.candidates.count > 1 {
+                HStack(spacing: DS.Spacing.s) {
+                    Image(systemName: "person.fill").font(.system(size: 11)).foregroundStyle(DS.Color.textTertiary)
+                    ForEach(AnglerSettings.candidates, id: \.self) { name in
+                        Button { angler = name } label: {
+                            Text(name).font(DS.Font.caption).foregroundStyle(angler == name ? DS.Color.background : DS.Color.textPrimary)
+                                .padding(.horizontal, DS.Spacing.m).padding(.vertical, DS.Spacing.xs)
+                                .background(angler == name ? DS.Color.accent : DS.Color.surface, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
             Button {
                 services.capture.setSpecies(catchID: catchItem.id, species: species, corrected: species != catchItem.species)
                 if let l = Double(lengthText), l != catchItem.lengthCm { services.capture.setLength(catchID: catchItem.id, lengthCm: l) }
+                if angler != AnglerSettings.displayName(for: catchItem.angler) { services.capture.setAngler(catchID: catchItem.id, angler: angler) }
+                if tackle != catchItem.tackle || rigID != catchItem.rigID { services.capture.setRig(catchID: catchItem.id, tackle: tackle, rigID: rigID) }
                 onDone(); dismiss()
             } label: {
                 Text("保存").font(DS.Font.label).foregroundStyle(DS.Color.background)
@@ -306,7 +414,11 @@ struct CatchEditSheet: View {
         }
         .padding(DS.Spacing.l)
         .background(ThemeBackground(name: .bgDetail))
-        .onAppear { species = catchItem.species; lengthText = catchItem.lengthCm.map { String(Int($0.rounded())) } ?? "" }
+        .onAppear {
+            species = catchItem.species; lengthText = catchItem.lengthCm.map { String(Int($0.rounded())) } ?? ""
+            angler = AnglerSettings.displayName(for: catchItem.angler)
+            tackle = catchItem.tackle; rigID = catchItem.rigID; rigs = (try? services.store.rigs()) ?? []
+        }
         .catchDeleteDialog(item: $deleting) { _ in onDone(); dismiss() }
     }
 }

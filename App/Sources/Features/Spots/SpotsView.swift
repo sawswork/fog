@@ -5,7 +5,7 @@ import Core
 /// 釣り場（§7）。全画面のモノトーン地図に釣り場を点で置き、下にカードを横並べ。カードを送ると地図が追従する。
 struct SpotsView: View {
     @Environment(AppServices.self) private var services
-    @State private var model = SpotsViewModel()
+    private var model: SpotsViewModel { services.spotsModel }
     @State private var camera: MapCameraPosition = .automatic
     @State private var selectedID: UUID?
     @State private var detail: SpotsViewModel.Card?
@@ -83,6 +83,39 @@ struct SpotsView: View {
                 Spacer()
             }
             cards
+            // 経路の帯（F-57）：所要時間と距離、Apple のマップで案内、閉じる
+            if let target = model.routeTarget, let r = model.route {
+                VStack {
+                    HStack(spacing: DS.Spacing.m) {
+                        Image(systemName: "car.fill").foregroundStyle(DS.Color.sea)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(target.name).font(DS.Font.label).foregroundStyle(DS.Color.textPrimary).lineLimit(1)
+                            Text(SpotsViewModel.etaText(.init(seconds: r.expectedTravelTime, meters: r.distance, at: Date()))).font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
+                        }
+                        Spacer()
+                        Button { SpotsViewModel.openInMaps(target) } label: {
+                            Text("マップで案内").font(DS.Font.caption).foregroundStyle(DS.Color.background)
+                                .padding(.horizontal, 10).padding(.vertical, 6).background(DS.Color.accent, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        Button { model.clearRoute() } label: { Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(DS.Color.textSecondary).frame(width: 28, height: 28) }
+                            .buttonStyle(.plain)
+                    }
+                    .padding(DS.Spacing.m)
+                    .background(DS.Color.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
+                    .padding(.horizontal, DS.Spacing.l).padding(.top, DS.Spacing.xl)
+                    .padding(.trailing, 56)
+                    Spacer()
+                }
+            } else if let e = model.routeError {
+                VStack {
+                    Text(e).font(DS.Font.caption).foregroundStyle(DS.Color.background)
+                        .padding(.horizontal, DS.Spacing.m).padding(.vertical, 6).background(DS.Color.holiday, in: Capsule()).padding(.top, DS.Spacing.xl)
+                    Spacer()
+                }
+                .allowsHitTesting(false)
+                .task { try? await Task.sleep(nanoseconds: 2_500_000_000); model.clearRoute() }
+            }
             if placingNote {
                 VStack {
                     Text("地図をタップしてメモを置く").font(DS.Font.label).foregroundStyle(DS.Color.background)
@@ -103,8 +136,12 @@ struct SpotsView: View {
         .onChange(of: services.gridForecast.version) { _, _ in rebuildRaster() }
         .onAppear {
             model.attach(services)
-            if feedPinsOn { feedPins = model.feedPins(); Task { await services.feeds.refreshIfNeeded() } }
-            if let first = model.cards.first(where: { $0.spot.coordinate.isPlausible }) {
+            // 地図を開いている間だけ位置を取り続ける（現在地の点・距離・所要時間が動く）。閉じたら止める
+            services.location.beginForegroundUpdates()
+            if feedPinsOn { feedPins = model.feedPins(); Task { await services.feeds.refreshIfNeeded(); await services.party.syncIfNeeded(store: services.store) } }
+            if selectedID != nil {
+                // 戻ってきたときは前の選択のまま
+            } else if let first = model.cards.first(where: { $0.spot.coordinate.isPlausible }) {
                 selectedID = first.spot.id
                 camera = .region(region(for: first.spot.coordinate))
             } else if let c = model.currentLocation {
@@ -113,7 +150,9 @@ struct SpotsView: View {
                 camera = .region(MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 41.77, longitude: 140.73), latitudinalMeters: 20_000, longitudinalMeters: 20_000))
             }
         }
+        .onDisappear { services.location.endForegroundUpdates() }
         .onReceive(NotificationCenter.default.publisher(for: .fogStoreDidChange)) { _ in model.refresh(); notes = (try? services.store.notes()) ?? [] }
+        .onChange(of: services.party.revision) { _, _ in if feedPinsOn { feedPins = model.feedPins() } }
         .task { notes = (try? services.store.notes()) ?? [] }
         .sheet(item: $noteDraft) { draft in
             NoteEditSheet(coordinate: draft.coordinate, existing: nil, placeHint: model.placeName(near: draft.coordinate)).presentationDetents([.medium])
@@ -167,10 +206,14 @@ struct SpotsView: View {
                     }
                 }
             }
-            if let c = model.currentLocation {
-                Annotation("", coordinate: c.cl, anchor: .center) {
-                    Circle().fill(.white).frame(width: 10, height: 10).overlay(Circle().stroke(DS.Color.background, lineWidth: 2))
-                }
+            // 現在地（白の点）。地図を開いている間は位置の更新を続けるので、移動するとリアルタイムで動く（2026-11-09）
+            UserAnnotation(anchor: .center) { _ in
+                Circle().fill(.white).frame(width: 12, height: 12).overlay(Circle().stroke(DS.Color.background, lineWidth: 2))
+                    .shadow(color: .black.opacity(0.4), radius: 2)
+            }
+            // 現在地からの車の経路（F-57）
+            if let r = model.route {
+                MapPolyline(r.polyline).stroke(DS.Color.sea, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
             }
             // 地図のメモ（F-52）：黄色い付箋。タップで内容・編集・削除。釣り場の点と同じ場所のものは点の上に積む（上）
             ForEach(standaloneNotes) { note in
@@ -299,6 +342,11 @@ struct SpotsView: View {
         }
     }
 
+    private func etaTaskKey(_ card: SpotsViewModel.Card) -> String {
+        guard let c = model.currentLocation else { return card.id.uuidString }
+        return "\(card.id.uuidString)|\(Int(c.latitude * 200)),\(Int(c.longitude * 200))"
+    }
+
     private func roundButton(_ symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol).font(.system(size: 16, weight: .semibold)).foregroundStyle(DS.Color.textPrimary)
@@ -307,113 +355,187 @@ struct SpotsView: View {
         .buttonStyle(.plain)
     }
 
-    /// 画面下 3 割：横スクロール、近い順。
+    /// 右下の縦のリスト（漁港名・釣れ率・距離か車の時間）と、選んだ漁港の四角い詳細パネル（左）。2026-11-09 開発者の指示でカードの横並びから変更
     private var cards: some View {
         GeometryReader { geo in
-            VStack {
+            let listWidth: CGFloat = 128
+            let panelSide = min(geo.size.width - listWidth - DS.Spacing.l * 3, geo.size.height * 0.42)
+            VStack(spacing: DS.Spacing.s) {
                 Spacer()
                 if layersOn {
                     MapTimeBar(hourOffset: $hourOffset, start: layerStart, hours: Self.layerHours)
-                        .frame(height: 40).padding(.horizontal, DS.Spacing.l).padding(.bottom, DS.Spacing.s)
+                        .frame(height: 40).padding(.horizontal, DS.Spacing.l)
                 }
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: DS.Spacing.m) {
-                        ForEach(model.allCards) { card in
-                            SpotCardView(card: card, selected: selectedID == card.spot.id,
-                                         feedPoints: feedPinsOn ? feedPins.map(\.coordinate).filter { Geo.distanceMeters($0, card.spot.coordinate) < 1200 } : [],
-                                         onSelectHome: { model.selectForHome(card.spot) },
-                                         onRegister: { model.register(card) })
-                                .frame(width: 230)
-                                .onTapGesture {
-                                    if selectedID == card.spot.id { if !card.isCandidate { detail = card } } else { selectedID = card.spot.id }
-                                }
-                        }
-                        if model.allCards.isEmpty {
-                            Text("地図を動かすと近くの漁港が出ます").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary).padding()
-                        }
+                HStack(alignment: .bottom, spacing: DS.Spacing.l) {
+                    Spacer(minLength: 0)
+                    if let id = selectedID, let card = model.allCards.first(where: { $0.spot.id == id }) {
+                        SpotDetailPanel(card: card, side: panelSide,
+                                        feedPoints: feedPinsOn ? feedPins.map(\.coordinate).filter { Geo.distanceMeters($0, card.spot.coordinate) < 1200 } : [],
+                                        distanceM: model.currentLocation.map { Geo.distanceMeters($0, card.spot.coordinate) },
+                                        eta: model.eta(for: card.spot), routeOn: model.routeTarget?.id == card.spot.id,
+                                        onSelectHome: { model.selectForHome(card.spot) },
+                                        onRegister: { model.register(card) },
+                                        onRoute: { Task { await model.toggleRoute(to: card.spot) } },
+                                        onDetail: { detail = card },
+                                        onClose: { selectedID = nil })
+                            .task(id: etaTaskKey(card)) { await model.requestETA(for: card.spot) }
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
                     }
-                    .padding(.horizontal, DS.Spacing.l)
-                    .scrollTargetLayout()
+                    spotList(width: listWidth, height: geo.size.height * 0.5)
                 }
-                .scrollTargetBehavior(.viewAligned)
-                .scrollPosition(id: $selectedID)
-                .frame(height: geo.size.height * 0.30)
+                .padding(.horizontal, DS.Spacing.l)
                 .padding(.bottom, DS.Spacing.m)
             }
+            .animation(.easeInOut(duration: 0.2), value: selectedID)
         }
+    }
+
+    /// 近い順の漁港の一覧（登録済みが先頭に来るわけではなく、近い順）。行：名前・釣れ率・距離（車の時間が取れていればそれ）
+    private func spotList(width: CGFloat, height: CGFloat) -> some View {
+        ScrollViewReader { reader in
+            ScrollView(.vertical, showsIndicators: false) {
+                LazyVStack(spacing: 4) {
+                    ForEach(model.allCards) { card in
+                        SpotListRow(card: card, selected: selectedID == card.spot.id,
+                                    distanceM: model.currentLocation.map { Geo.distanceMeters($0, card.spot.coordinate) }, eta: model.eta(for: card.spot))
+                            .id(card.spot.id)
+                            .onTapGesture { selectedID = selectedID == card.spot.id ? nil : card.spot.id }
+                    }
+                    if model.allCards.isEmpty {
+                        Text("地図を動かすと近くの漁港が出ます").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary).padding(DS.Spacing.s)
+                    }
+                }
+                .padding(6)
+            }
+            .frame(width: width, height: height)
+            .background(DS.Color.panel.opacity(0.94), in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
+            .onChange(of: selectedID) { _, id in if let id { withAnimation { reader.scrollTo(id, anchor: .center) } } }
+        }
+    }
+}
+
+/// 一覧の 1 行：漁港名、釣れ率、距離か車の時間。登録済みはテーマ色の点、未登録はグレーの点
+struct SpotListRow: View {
+    let card: SpotsViewModel.Card
+    let selected: Bool
+    var distanceM: Double? = nil
+    var eta: SpotsViewModel.DriveETA? = nil
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 6) {
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 4) {
+                    Circle().fill(card.spot.isRegistered ? DS.Color.accent : DS.Color.textTertiary).frame(width: 5, height: 5)
+                    Text(card.spot.name).font(.system(size: 12, weight: .semibold)).foregroundStyle(DS.Color.textPrimary).lineLimit(1).minimumScaleFactor(0.75)
+                }
+                Text(eta.map { Self.short($0) } ?? (distanceM.map { $0 >= 1000 ? String(format: "%.1f km", $0 / 1000) : "\(Int($0)) m" } ?? "—"))
+                    .font(.system(size: 10)).foregroundStyle(DS.Color.textTertiary).lineLimit(1)
+            }
+            Spacer(minLength: 2)
+            Text("\(card.score)").font(DS.Font.number(17)).foregroundStyle(card.score >= 70 ? DS.Color.accent : DS.Color.textPrimary)
+        }
+        .padding(.horizontal, 8).padding(.vertical, 6)
+        .background(selected ? DS.Color.surfaceRaised : Color.clear, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .contentShape(Rectangle())
+    }
+
+    /// 「車 25分 · 18km」を 1 行に収める短い形
+    static func short(_ e: SpotsViewModel.DriveETA) -> String {
+        let m = Int((e.seconds / 60).rounded())
+        let t = m >= 60 ? "\(m / 60)h\(m % 60 == 0 ? "" : "\(m % 60)m")" : "\(m)分"
+        return "車 \(t) · " + (e.meters >= 10_000 ? String(format: "%.0fkm", e.meters / 1000) : String(format: "%.1fkm", e.meters / 1000))
+    }
+}
+
+/// 選んだ漁港の四角い詳細：上に航空写真（釣れた位置の点つき）、下に釣れ率・釣行数・最後の釣行・よく釣れる魚、車の時間、ボタン（選択／登録・経路）。パネルをタップで釣り場詳細
+struct SpotDetailPanel: View {
+    let card: SpotsViewModel.Card
+    let side: CGFloat
+    var feedPoints: [Coordinate] = []
+    var distanceM: Double? = nil
+    var eta: SpotsViewModel.DriveETA? = nil
+    var routeOn: Bool = false
+    let onSelectHome: () -> Void
+    var onRegister: () -> Void = {}
+    var onRoute: () -> Void = {}
+    var onDetail: () -> Void = {}
+    var onClose: () -> Void = {}
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ZStack(alignment: .topTrailing) {
+                if card.spot.coordinate.isPlausible {
+                    SpotSnapshotView(coordinate: card.spot.coordinate, catchPoints: card.catchPoints, lossPoints: card.lossPoints, feedPoints: feedPoints,
+                                     displayWidth: side - DS.Spacing.m * 2)
+                }
+                Button(action: onClose) {
+                    Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
+                        .frame(width: 26, height: 26).background(Color.black.opacity(0.55), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .padding(4)
+            }
+            HStack(alignment: .firstTextBaseline) {
+                Text(card.spot.name).font(.system(size: 16, weight: .bold)).foregroundStyle(DS.Color.textPrimary).lineLimit(1).minimumScaleFactor(0.7)
+                Spacer()
+                Text("\(card.score)").font(DS.Font.score(26)).foregroundStyle(card.score >= 70 ? DS.Color.accent : DS.Color.textPrimary)
+            }
+            HStack(spacing: DS.Spacing.s) {
+                if card.isCandidate {
+                    Text("未登録の漁港").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+                } else {
+                    Text("\(card.stats.sessions)釣行 \(card.stats.catches)尾").font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
+                    if let last = card.stats.lastSessionAt { Text(last, format: .dateTime.month().day()).font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary) }
+                }
+                Spacer()
+                ForEach(card.stats.topSpecies.prefix(2), id: \.species) { s in
+                    Text(s.species).font(.system(size: 10)).foregroundStyle(DS.Color.textTertiary)
+                }
+            }
+            Spacer(minLength: 0)
+            HStack(spacing: 6) {
+                Button(action: onRoute) {
+                    HStack(spacing: 4) {
+                        Image(systemName: routeOn ? "car.fill" : "car").font(.system(size: 10, weight: .semibold))
+                        Text(eta.map { SpotListRow.short($0) } ?? (distanceM.map { $0 >= 1000 ? String(format: "%.1f km", $0 / 1000) : "\(Int($0)) m" } ?? "—"))
+                            .font(DS.Font.caption).lineLimit(1).minimumScaleFactor(0.7)
+                    }
+                    .foregroundStyle(routeOn ? DS.Color.background : DS.Color.textSecondary)
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .background(routeOn ? DS.Color.sea : DS.Color.surfaceRaised, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                Spacer(minLength: 0)
+                if card.isCandidate {
+                    Button(action: onRegister) {
+                        Label("登録", systemImage: "plus").font(DS.Font.caption).foregroundStyle(DS.Color.background)
+                            .padding(.horizontal, 10).padding(.vertical, 5).background(DS.Color.accent, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Button(action: onSelectHome) {
+                        Text("ホームに").font(DS.Font.caption).foregroundStyle(DS.Color.textPrimary)
+                            .padding(.horizontal, 10).padding(.vertical, 5).background(DS.Color.surfaceRaised, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+                Button(action: onDetail) {
+                    Image(systemName: "chevron.right").font(.system(size: 12, weight: .bold)).foregroundStyle(DS.Color.textPrimary)
+                        .frame(width: 28, height: 28).background(DS.Color.surfaceRaised, in: Circle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(DS.Spacing.m)
+        .frame(width: side, height: side)
+        .background(DS.Color.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous))
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onDetail)
     }
 }
 
 extension Coordinate {
     var cl: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: latitude, longitude: longitude) }
-}
-
-/// カード：釣り場名、今の釣れ率（0〜100）、釣行数、最後の釣行日、よく釣れる魚種。
-struct SpotCardView: View {
-    let card: SpotsViewModel.Card
-    let selected: Bool
-    /// 釣果情報の記事の位置（写真に黄色の点。F-47）
-    var feedPoints: [Coordinate] = []
-    let onSelectHome: () -> Void
-    var onRegister: () -> Void = {}
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(alignment: .top) {
-                Text(card.spot.name).font(.system(size: 18, weight: .bold)).foregroundStyle(DS.Color.textPrimary).lineLimit(1)
-                Spacer()
-                if card.isCandidate {
-                    Button(action: onRegister) {
-                        Label("登録", systemImage: "plus").font(DS.Font.caption).foregroundStyle(DS.Color.background)
-                            .padding(.horizontal, 10).padding(.vertical, 4).background(DS.Color.accent, in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    Button(action: onSelectHome) {
-                        Text("選択").font(DS.Font.caption).foregroundStyle(DS.Color.textPrimary)
-                            .padding(.horizontal, 10).padding(.vertical, 4).background(DS.Color.surfaceRaised, in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            HStack(alignment: .top, spacing: DS.Spacing.s) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("釣れ率").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
-                    Text("\(card.score)").font(DS.Font.score(40)).foregroundStyle(DS.Color.textPrimary)
-                }
-                Spacer(minLength: 0)
-                // 釣り場の形（上から見た航空写真、北が上。F-46）
-                if card.spot.coordinate.isPlausible {
-                    SpotSnapshotView(coordinate: card.spot.coordinate, catchPoints: card.catchPoints, lossPoints: card.lossPoints, feedPoints: feedPoints)
-                }
-            }
-            Spacer(minLength: 0)
-            HStack(alignment: .center, spacing: DS.Spacing.m) {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "fish.fill").font(.system(size: 11)).foregroundStyle(DS.Color.textTertiary)
-                        Text(card.isCandidate ? "未登録" : "\(card.stats.catches)").font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
-                    }
-                    if let last = card.stats.lastSessionAt {
-                        Text(last, format: .dateTime.year().month().day()).font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
-                    } else {
-                        Text(card.isCandidate ? "地図から見つけた漁港" : (card.spot.coordinate.isPlausible ? "\(card.stats.sessions)釣行" : "位置なしで撮影した釣果。詳細から削除できます")).font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary).lineLimit(2)
-                    }
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    ForEach(card.stats.topSpecies.prefix(2), id: \.species) { s in
-                        HStack(spacing: 3) {
-                            Text(s.species).font(.system(size: 9)).foregroundStyle(DS.Color.textTertiary)
-                            Image(systemName: "fish.fill").font(.system(size: 11)).foregroundStyle(DS.Color.textSecondary)
-                        }
-                    }
-                }
-            }
-        }
-        .padding(DS.Spacing.m)
-        .background(selected ? DS.Color.surfaceRaised : DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous))
-    }
 }
 
 /// 検索（全国の漁港名・地名、F-50）。1 文字打つごとに同梱の港データをよみで絞り込み（かな・ローマ字・漢字）、

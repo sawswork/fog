@@ -33,6 +33,10 @@ final class CatchRecord {
     /// `EnvSnapshot` の JSON。
     var envData: Data? = nil
     var released: Bool = true
+    /// `[String]` の JSON（足場・時間帯・天気。F-31）
+    var sceneTagsData: Data? = nil
+    /// 釣った人（F-54）。nil は自分
+    var angler: String? = nil
 
     var session: SessionRecord? = nil
 
@@ -60,6 +64,8 @@ final class CatchRecord {
         rigID = core.rigID
         envData = BlobCodec.encode(core.env)
         released = core.released
+        sceneTagsData = core.sceneTags.flatMap { $0.isEmpty ? nil : BlobCodec.encode($0) }
+        angler = core.angler
     }
 
     func core(sessionID: UUID) -> Catch {
@@ -81,7 +87,9 @@ final class CatchRecord {
             speciesCandidates: BlobCodec.decode([SpeciesCandidate].self, from: speciesCandidatesData) ?? [],
             speciesCorrected: speciesCorrected,
             photoLocalIdentifiers: BlobCodec.decode([String].self, from: photoLocalIdentifiersData) ?? [],
-            tackleID: tackleID
+            tackleID: tackleID,
+            sceneTags: BlobCodec.decode([String].self, from: sceneTagsData),
+            angler: angler
         )
     }
 }

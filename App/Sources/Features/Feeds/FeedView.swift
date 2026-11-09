@@ -9,6 +9,8 @@ struct FeedView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var refreshing = false
     @State private var onlyRelevant = false
+    /// 仲間の釣果の写真を全画面で（F-54/F-55）
+    @State private var viewing: SharedCatch?
 
     private var items: [FeedItem] {
         let all = services.feeds.sorted(keywords: keywords)
@@ -28,7 +30,11 @@ struct FeedView: View {
                 .buttonStyle(.plain)
                 Button {
                     refreshing = true
-                    Task { await services.feeds.refreshIfNeeded(force: true); refreshing = false }
+                    Task {
+                        await services.feeds.refreshIfNeeded(force: true)
+                        await services.party.syncIfNeeded(store: services.store, force: true)
+                        refreshing = false
+                    }
                 } label: {
                     Image(systemName: "arrow.clockwise").font(.system(size: 14, weight: .semibold)).foregroundStyle(DS.Color.textSecondary).frame(width: 28, height: 28)
                 }
@@ -42,6 +48,13 @@ struct FeedView: View {
             }
             ScrollView(showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: DS.Spacing.s) {
+                    // 仲間の釣果（F-54）：相手の端末で撮った魚。新しい順に最大 20 件
+                    let shared = services.party.others
+                    if !shared.isEmpty {
+                        Text("仲間の釣果").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+                        ForEach(shared.prefix(20)) { s in sharedRow(s) }
+                        Text("釣果情報（記事）").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary).padding(.top, DS.Spacing.s)
+                    }
                     ForEach(items) { item in row(item) }
                 }
             }
@@ -49,6 +62,41 @@ struct FeedView: View {
         .padding(DS.Spacing.l)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(ThemeBackground(name: .bgDetail))
+        .task { await services.party.syncIfNeeded(store: services.store) }
+        .fullScreenCover(item: $viewing) { s in
+            PhotoViewer(catchItem: Catch(id: s.id, sessionID: s.id, at: s.at, coordinate: s.coordinate, species: s.species, speciesConfidence: 1, lengthCm: s.lengthCm, angler: s.angler),
+                        fallback: services.party.thumbnail(for: s.id))
+        }
+    }
+
+    private func sharedRow(_ s: SharedCatch) -> some View {
+        Button { viewing = s } label: {
+            HStack(spacing: DS.Spacing.m) {
+                if let data = services.party.thumbnail(for: s.id), let ui = UIImage(data: data) {
+                    Image(uiImage: ui).resizable().scaledToFill().frame(width: 56, height: 56).clipShape(RoundedRectangle(cornerRadius: DS.Radius.chip))
+                } else {
+                    RoundedRectangle(cornerRadius: DS.Radius.chip).fill(DS.Color.surface).frame(width: 56, height: 56)
+                        .overlay(Image(systemName: "fish.fill").foregroundStyle(DS.Color.faded))
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: DS.Spacing.s) {
+                        Text(s.headline).font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
+                        Text(s.angler).font(.system(size: 10, weight: .semibold)).foregroundStyle(DS.Color.background)
+                            .padding(.horizontal, 6).padding(.vertical, 2).background(DS.Color.sun, in: Capsule())
+                    }
+                    HStack(spacing: DS.Spacing.s) {
+                        if !s.spotName.isEmpty { Text(s.spotName).font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary).lineLimit(1) }
+                        Text(s.at, format: .dateTime.month().day().hour().minute()).font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+                        if let t = s.tideName { Text(t).font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary) }
+                    }
+                }
+                Spacer()
+            }
+            .padding(DS.Spacing.m)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     private func row(_ item: FeedItem) -> some View {

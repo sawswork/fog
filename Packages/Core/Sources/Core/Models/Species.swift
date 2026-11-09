@@ -39,7 +39,14 @@ public struct Species: Codable, Identifiable, Hashable, Sendable {
         Species(id: "hirame", name: "ヒラメ", priority: .low),
         Species(id: "buri", name: "ブリ", aliases: ["イナダ", "フクラギ"], priority: .low),
         Species(id: "sakuramasu", name: "サクラマス", priority: .low),
+        // イカ（2026-11-09 開発者の指示で追加。道南の岸から釣れる 3 種）
+        Species(id: "yariika", name: "ヤリイカ", aliases: ["ヤリ", "テナシ"], priority: .medium),
+        Species(id: "surumeika", name: "スルメイカ", aliases: ["マイカ", "イカ"], priority: .medium),
+        Species(id: "hiika", name: "ヒイカ", aliases: ["ジンドウイカ", "コイカ"], priority: .low),
     ]
+
+    /// イカ類か（全長の計測は胴長になるので、サイズの表示に「胴長」と添える）
+    public var isSquid: Bool { name.hasSuffix("イカ") }
 }
 
 /// 魚種判定の候補（低確信度時に3種を出す。F-10）。
