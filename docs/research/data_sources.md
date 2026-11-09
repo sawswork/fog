@@ -35,6 +35,26 @@
   - 釣れ率には反映しない（出典も精度も揃わないため）。
 - 優先度は低い。開発者が指示したときだけ L17 で実装する。
 
+## 5. 魚のデータと画像 — Wikidata / Wikipedia 日本語版 / Wikimedia Commons / FishBase（2026-11-09、F-60）
+
+| 出典 | 使うもの | ライセンス・条件 | 取り方 |
+| --- | --- | --- | --- |
+| Wikidata | 学名（P225）・科（P171 をたどる）・FishBase ID（P938）・Commons の画像名（P18）・日本語版の記事名 | CC0 | `Special:EntityData/Q….json`（キャッシュが効く） |
+| Wikipedia 日本語版 | 概要・形態・生態・分布・利用の節、産卵期・旬の文 | CC BY-SA 4.0。各種に記事名とリンクを出典として表示 | action API の `prop=revisions`（wikitext）を `mwparserfromhell` で本文化 |
+| Wikimedia Commons | 種の画像 1 枚とライセンス・作者 | CC BY / CC BY-SA / CC0 / パブリックドメインの画像だけ使う（NC・ND は使わない）。作者とライセンスを画像の上と出典欄に表示 | `imageinfo` の `extmetadata`。本体は `upload.wikimedia.org` の 1000 px サムネイルを 900 px・JPEG 82 に |
+| FishBase (fishbase.se) | 最大全長・よくある全長・成熟サイズ・最大体重・生息環境（海水/淡水/汽水、底生/回遊など）・水深・気候帯・水温・分布（英語）・形態と生態の短文（英語） | CC BY-NC 3.0（Froese & Pauly）。本人利用・非商用のアプリで、各種に出典として表示 | 種の要約ページ（`summary/<SpecCode>`）の本文を正規表現で読む。API（ropensci）は証明書の問題で使わない |
+
+取り込みの流れ（2026-11-09 に「可能な限り全種」へ拡張。開発者「全国には約 4,800 種」）
+1. FishBase の「日本の魚種一覧」（`country/CountryChecklist.php?c_code=392`、約 4,270 種：学名・目・科・英名・和名ローマ字・在来/移入/固有）
+2. Wikidata の SPARQL（`query.wikidata.org`）で FishBase ID → QID・和名・日本語版の記事名・Commons の画像名を一括（150 件ずつ）
+3. Wikipedia 日本語版の本文は **公開ダンプ**（`dumps.wikimedia.org/jawiki/latest/…multistream.xml.bz2`）から、索引で該当記事のブロックだけを Range で取る（API を 1 記事ずつ叩くと 429 で数十時間かかる）
+4. FishBase の種の要約ページを 1 種ずつ（0.5 秒間隔、約 2 時間）
+5. Commons の画像はライセンスを確かめて 1 枚ずつ（8 秒以上あける。数時間〜。先に手選びの 192 種、次に日本語記事のある種）
+6. `scripts/build_fish_json.py` が全部を合わせて `Packages/Core/Sources/Core/Data/fish.json` を作る。和名は 手選びの名前 → Wikidata の和名 → 日本語版の記事名 → FishBase のローマ字をカタカナに直した推定名（`nameEstimated`）→ 学名 の順
+
+スクリプト：`scripts/fetch_fish_db.py`（共通の解析・1 種ずつの取得）、`scripts/build_fish_json.py`（組み立て）、`scripts/romaji_kana.py`（ローマ字 → カタカナ）、`scripts/fish_species_list.json`（釣りの分類タグ・別名を付ける 192 種）。
+Wikimedia は共有 IP への 429 が多いので、UA を名乗り、ホストごとに 1.5 秒（画像は 8 秒）あけ、`Retry-After` に従って待つ。
+
 ## 4. 気象 — WeatherKit
 
 - Apple 公式。端末から直接取得。現在値＋時間別予報（約10日先）＋日別予報。
