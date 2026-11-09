@@ -67,8 +67,10 @@ for i,e in enumerate(queue):
     if not r or r.status_code!=200:
         credits[sid]={"skipped":"inat:download"}; continue
     try:
-        im=Image.open(io.BytesIO(r.content)).convert("RGB"); im.thumbnail((640,640))
-        im.save(os.path.join(OUT,sid+".jpg"),"JPEG",quality=78,optimize=True)
+        # 容量：釣りの分類のある種は 640 px、それ以外は 480 px（4,000 種で 100 MB を超えないように）
+        side = 640 if e.get("groups") else 480
+        im=Image.open(io.BytesIO(r.content)).convert("RGB"); im.thumbnail((side,side))
+        im.save(os.path.join(OUT,sid+".jpg"),"JPEG",quality=76 if e.get("groups") else 72,optimize=True)
     except Exception as ex:
         credits[sid]={"skipped":"inat:image"}; continue
     lic=ph["license"].upper().replace("CC-","CC ").replace("CC0","CC0")
