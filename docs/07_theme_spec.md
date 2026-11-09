@@ -27,7 +27,7 @@
 | `fonts.text` / `fonts.number` | `default` / `serif` / `rounded` / `monospaced` |
 | `colors` | 上書きする色。キー：`background` `surface` `surfaceRaised` `accent` `secondary` `sun` `daylight` `textPrimary` `textSecondary` `textTertiary` `faded` `sea` `moon` `saturday` `holiday` `panel` `scrim`。値は `#RRGGBB` か `#RRGGBBAA` |
 | `home` | ホームの配置（無ければ従来の縦積み＋タブバー） |
-| `style` | **標準レイアウトの部品の見た目**（2026-11-09 追加）：`chipTilt`（チップの面内の傾き、度）、`chipPerspective`（縦軸まわりの回転、度。奥行き）、`glass`（チップと予報カードをすりガラス＋薄い白い枠に）、`glassOpacity`（その上の面の濃さ 0〜1、省略 0.35。小さいほど背景が透ける）、`chipOrnament`（チップの角の飾り文字、例 "✦"）、`captureSymbol`（撮影ボタンの SF Symbols 名、例 "moon.fill"）。`App/Resources/Themes/fern/` が例 |
+| `style` | **標準レイアウトの部品の見た目**（2026-11-09 追加）：`chipTilt`（チップの面内の傾き、度）、`chipPerspective`（縦軸まわりの回転、度。奥行き）、`glass`（チップと予報カードをすりガラス＋薄い白い枠に）、`glassOpacity`（その上の面の濃さ 0〜1、省略 0.35。小さいほど背景が透ける）、`glassBlur`（すりガラスのぼかしを使うか。false なら薄い色の面だけで背景がそのまま透ける。省略 true）、`chipOrnament`（チップの角の飾り文字、例 "✦"）、`captureSymbol`（撮影ボタンの SF Symbols 名、例 "moon.fill"）。`App/Resources/Themes/fern/` が例 |
 
 組み込みのフォルダ（`grimoire` など）に `theme.json` を置くと、その組み込みテーマの上書きになる。
 

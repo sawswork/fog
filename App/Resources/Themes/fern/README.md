@@ -9,4 +9,4 @@
 | `bg_log.jpg` `bg_guide.jpg` `bg_sheet.jpg` `bg_detail.jpg` | 他の画面の暗い紫の背景 | Gemini |
 | `ring_home.png` | 釣れ率の周りの細い魔法陣（透過） | Gemini → `scripts/theme_chroma_key.py` |
 
-`style`：`chipTilt: -4`（面内の傾き）、`chipPerspective: 16`（縦軸まわり、奥行き）、`glass: true`（チップと予報カードをすりガラス＋白い枠に）、`glassOpacity: 0.10`（面を薄くして背景を見せる。2026-11-09 開発者「枠を薄くして背景を見えるように」）、`chipOrnament: "✦"`、`captureSymbol: "moon.fill"`。書き方は `docs/07_theme_spec.md`。
+`style`：`chipTilt: -4`（面内の傾き）、`chipPerspective: 16`（縦軸まわり、奥行き）、`glass: true`（チップと予報カードをすりガラス＋白い枠に）、`glassOpacity: 0.14` と `glassBlur: false`（ぼかしを使わず薄い面だけにして背景をそのまま見せる。2026-11-09 開発者「枠を薄くして背景を見えるように」「薄さが変わっていない」→ iOS の material 自体が暗かったのでぼかしを外した）、`chipOrnament: "✦"`、`captureSymbol: "moon.fill"`。書き方は `docs/07_theme_spec.md`。

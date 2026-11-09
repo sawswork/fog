@@ -39,12 +39,14 @@ public struct ThemeSpec: Codable, Hashable, Sendable {
         public var glass: Bool?
         /// ガラスの上に重ねる面の濃さ（0〜1。小さいほど背景が透ける。省略は 0.35）
         public var glassOpacity: Double?
+        /// すりガラスのぼかし（iOS の material）を使うか。false なら薄い色の面だけ（背景がそのまま透ける）。省略は true
+        public var glassBlur: Bool?
         /// チップの角に置く飾りの文字（例 "✦"）
         public var chipOrnament: String?
         /// 撮影ボタンの SF Symbols 名（例 "moon.fill"）。省略は camera.fill
         public var captureSymbol: String?
-        public init(chipTilt: Double? = nil, chipPerspective: Double? = nil, glass: Bool? = nil, glassOpacity: Double? = nil, chipOrnament: String? = nil, captureSymbol: String? = nil) {
-            self.chipTilt = chipTilt; self.chipPerspective = chipPerspective; self.glass = glass; self.glassOpacity = glassOpacity; self.chipOrnament = chipOrnament; self.captureSymbol = captureSymbol
+        public init(chipTilt: Double? = nil, chipPerspective: Double? = nil, glass: Bool? = nil, glassOpacity: Double? = nil, glassBlur: Bool? = nil, chipOrnament: String? = nil, captureSymbol: String? = nil) {
+            self.chipTilt = chipTilt; self.chipPerspective = chipPerspective; self.glass = glass; self.glassOpacity = glassOpacity; self.glassBlur = glassBlur; self.chipOrnament = chipOrnament; self.captureSymbol = captureSymbol
         }
     }
 

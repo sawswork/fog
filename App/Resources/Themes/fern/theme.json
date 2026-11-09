@@ -24,7 +24,8 @@
     "chipTilt": -4,
     "chipPerspective": 16,
     "glass": true,
-    "glassOpacity": 0.10,
+    "glassOpacity": 0.14,
+    "glassBlur": false,
     "chipOrnament": "✦",
     "captureSymbol": "moon.fill"
   }
