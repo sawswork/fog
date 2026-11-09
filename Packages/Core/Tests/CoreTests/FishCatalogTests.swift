@@ -18,7 +18,9 @@ final class FishCatalogTests: XCTestCase {
     func testNormalizeAbsorbsKanaAndWidth() {
         XCTAssertEqual(FishSearch.normalize("あいなめ"), "アイナメ")
         XCTAssertEqual(FishSearch.normalize("ＡＩＮＡＭＥ"), "ainame")
-        XCTAssertEqual(FishSearch.normalize("ｱｲﾅﾒ"), "ｱｲﾅﾒ")   // 半角カナはそのまま（入力はまれ）
+        XCTAssertEqual(FishSearch.normalize("ｱｲﾅﾒ"), "アイナメ")   // 半角カナも全角に
+        XCTAssertEqual(FishSearch.normalize("アイナメ"), "アイナメ")   // カタカナは半角にしない
+        XCTAssertEqual(FishSearch.normalize("北海道　根魚"), "北海道 根魚")
     }
 
     func testSearchByNameAliasPlaceAndTrait() {

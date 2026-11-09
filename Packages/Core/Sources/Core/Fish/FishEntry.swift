@@ -143,10 +143,16 @@ public struct FishEntry: Codable, Identifiable, Hashable, Sendable {
 /// 図鑑の検索（名前・場所・特性・時期）。ひらがな／カタカナ・全角／半角・大小の違いを吸収する
 public enum FishSearch {
     public static func normalize(_ s: String) -> String {
-        var out = s.lowercased()
-        out = out.applyingTransform(.fullwidthToHalfwidth, reverse: false) ?? out
+        // 半角カナ → 全角カナ（ASCII も全角になる）→ 全角 ASCII だけ半角に戻す → ひらがな → カタカナ → 小文字
+        // （`fullwidthToHalfwidth` を順方向にかけるとカタカナまで半角になり、ひらがな由来のカタカナと食い違う）
+        var out = s.applyingTransform(.fullwidthToHalfwidth, reverse: true) ?? s
+        out = String(String.UnicodeScalarView(out.unicodeScalars.map { sc -> Unicode.Scalar in
+            if (0xFF01...0xFF5E).contains(sc.value), let h = Unicode.Scalar(sc.value - 0xFEE0) { return h }
+            if sc.value == 0x3000 { return " " }
+            return sc
+        }))
         out = out.applyingTransform(.hiraganaToKatakana, reverse: false) ?? out
-        return out
+        return out.lowercased()
     }
 
     /// 語を空白で分け、全部の語が含まれるものだけ残す
