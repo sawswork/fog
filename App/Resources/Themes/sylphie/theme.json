@@ -9,29 +9,28 @@
     "sun": "#F2D06B",
     "textPrimary": "#F3F1E6",
     "panel": "#0A1C1A73",
-    "scrim": "#00000033"
+    "scrim": "#00000022"
   },
   "home": {
     "hidesTabBar": true,
-    "scrim": 0.12,
+    "scrim": 0.0,
     "layers": [
-      { "image": "bg_home",   "rect": [0, 0, 1, 1],              "fit": "fill", "z": 0 },
-      { "image": "ring_home", "rect": [0.20, 0.045, 0.60, 0.275],  "fit": "fit",  "z": 30, "opacity": 0.95 },
-      { "image": "char_home", "rect": [0.10, 0.20, 0.80, 0.60],    "fit": "fit",  "z": 40 },
-      { "image": "map_frame", "rect": [0.00, 0.68, 1.00, 0.26],    "fit": "fill", "z": 55, "opacity": 0.9 }
+      { "image": "bg_home",    "rect": [0, 0, 1, 1],             "fit": "fill", "z": 0,  "motion": "drift", "speed": 1, "amount": 0.6 },
+      { "effect": "fireflies", "rect": [0, 0, 1, 1],             "z": 10, "count": 30, "color": "#9BE3B3" },
+      { "effect": "sparkles",  "rect": [0.05, 0.05, 0.90, 0.60], "z": 12, "count": 14, "color": "#F2D06B", "opacity": 0.9 },
+      { "effect": "leaves",    "rect": [0, 0, 1, 1],             "z": 14, "count": 8,  "color": "#8FD9A0", "opacity": 0.8 }
     ],
     "blocks": [
-      { "type": "header",        "rect": [0.04, 0.00, 0.92, 0.12], "z": 90 },
-      { "type": "score",         "rect": [0.30, 0.085, 0.40, 0.19], "z": 50 },
-      { "type": "chips",         "rect": [0.06, 0.275, 0.88, 0.065], "z": 60, "opacity": 0.95 },
-      { "type": "chart",         "rect": [0.05, 0.345, 0.44, 0.15], "z": 60, "background": "glass", "padding": 6 },
-      { "type": "table",         "rect": [0.52, 0.345, 0.44, 0.15], "z": 60, "background": "glass", "padding": 6 },
-      { "type": "feedLine",      "rect": [0.08, 0.50, 0.84, 0.03],  "z": 60 },
-      { "type": "recentCatches", "rect": [0.06, 0.535, 0.44, 0.15], "z": 60, "action": "log" },
-      { "type": "week",          "rect": [0.52, 0.545, 0.44, 0.07], "z": 60, "background": "glass", "padding": 4 },
-      { "type": "text",          "rect": [0.74, 0.625, 0.22, 0.05], "z": 60, "text": "FROM EMERALD\nTO WHITE", "style": "caption" },
-      { "type": "miniMap",       "rect": [0.02, 0.70, 0.96, 0.21], "z": 50, "action": "spots" },
-      { "type": "nav",           "rect": [0.00, 0.92, 1.00, 0.08], "z": 100, "style": "compact" }
+      { "type": "header",        "rect": [0.04, 0.00, 0.92, 0.12],   "z": 90 },
+      { "type": "score",         "rect": [0.36, 0.09, 0.28, 0.13],   "z": 50 },
+      { "type": "chart",         "rect": [0.13, 0.345, 0.34, 0.13],  "z": 60, "padding": 2 },
+      { "type": "table",         "rect": [0.53, 0.345, 0.34, 0.13],  "z": 60, "padding": 2 },
+      { "type": "feedLine",      "rect": [0.10, 0.505, 0.80, 0.03],  "z": 60 },
+      { "type": "recentCatches", "rect": [0.04, 0.55, 0.42, 0.13],   "z": 60, "action": "log" },
+      { "type": "week",          "rect": [0.68, 0.555, 0.30, 0.065], "z": 60, "padding": 2 },
+      { "type": "button",        "rect": [0.74, 0.628, 0.10, 0.045], "z": 70, "image": "tab_guide",  "action": "guide" },
+      { "type": "button",        "rect": [0.86, 0.618, 0.12, 0.055], "z": 70, "image": "tab_camera", "action": "capture" },
+      { "type": "text",          "rect": [0.00, 0.70, 1.00, 0.22],   "z": 80, "text": "", "action": "spots" }
     ]
   }
 }

@@ -76,4 +76,33 @@ final class ThemeSpecTests: XCTestCase {
         XCTAssertEqual(c.a, 1)
         XCTAssertEqual(HomeLayout.Action(rawValue: "spotSwitch"), .spotSwitch)
     }
+
+    /// 動き（motion）と効果（effect）の層：画像の無い効果の層が通り、画像も効果も無い層は落ち、倍率は範囲に収まる
+    func testLayerMotionAndEffect() throws {
+        let json = """
+        {"home":{"layers":[
+          {"image":"bg_home","motion":"drift","speed":0.5,"amount":9},
+          {"effect":"fireflies","count":500,"color":"#9BE3B3","z":10},
+          {"rect":[0,0,1,1],"z":5},
+          {"image":"char_home","motion":"float","speed":0}
+        ]}}
+        """
+        let spec = try ThemeSpec.parse(Data(json.utf8))
+        let layers = try XCTUnwrap(spec.home?.layers)
+        XCTAssertEqual(layers.count, 3)                   // 画像も効果も無い層は落ちる
+        // 並びは z 順（bg 0 → char 0 → fireflies 10）なので名前で引く
+        let bg = try XCTUnwrap(layers.first { $0.image == "bg_home" })
+        let fire = try XCTUnwrap(layers.first { $0.effect == "fireflies" })
+        let char = try XCTUnwrap(layers.first { $0.image == "char_home" })
+        XCTAssertEqual(layers.last?.effect, "fireflies")
+        XCTAssertEqual(bg.motion, "drift")
+        XCTAssertEqual(bg.speed, 0.5)
+        XCTAssertEqual(bg.amount, 3)                      // 9 → 3
+        XCTAssertEqual(fire.image, "")
+        XCTAssertEqual(fire.count, 200)                   // 500 → 200
+        XCTAssertEqual(fire.parsedColor?.g ?? 0, 0xE3 / 255.0, accuracy: 0.001)
+        XCTAssertEqual(char.speed, 0.1)                   // 0 → 0.1
+        XCTAssertNil(char.effect)
+        XCTAssertNil(char.parsedColor)
+    }
 }

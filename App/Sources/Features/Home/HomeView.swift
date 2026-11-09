@@ -108,7 +108,13 @@ struct HomeView: View {
     }
 
     @ViewBuilder private func layerView(_ layer: HomeLayout.Layer, size: CGSize) -> some View {
-        if let loaded = ThemeAssets.load(named: layer.image) {
+        if let effect = layer.effect {
+            // 画像の無い効果の層（光の粒・舞う葉・きらめき）。ずっと眺めていられるホームのため（2026-11-09 開発者の要望）
+            let color = layer.parsedColor.map { Color(red: $0.r, green: $0.g, blue: $0.b, opacity: $0.a) } ?? DS.Color.accent
+            place(HomeEffectField(kind: effect, count: layer.count, color: color, speed: layer.speed, amount: layer.amount)
+                    .opacity(layer.opacity).allowsHitTesting(false),
+                  layer.rect, in: size)
+        } else if let loaded = ThemeAssets.load(named: layer.image) {
             place(
                 Image(uiImage: loaded.image).resizable()
                     .aspectRatio(contentMode: layer.fit == "fit" ? .fit : .fill)
@@ -116,6 +122,7 @@ struct HomeView: View {
                     .clipped()
                     .blendMode(layer.blend == "auto" && loaded.blend == .screen ? .screen : .normal)
                     .opacity(layer.opacity)
+                    .modifier(HomeLayerMotion(kind: layer.motion ?? "", speed: layer.speed, amount: layer.amount))
                     .allowsHitTesting(false),
                 layer.rect, in: size)
         }
