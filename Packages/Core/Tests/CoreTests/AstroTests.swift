@@ -115,8 +115,9 @@ final class AstroTests: XCTestCase {
         XCTAssertEqual(TideName.on(day(8, hour: 5), timeZone: jst), .middle)
         XCTAssertEqual(TideName.on(day(8, hour: 23), timeZone: jst), .middle)
         XCTAssertEqual(TideName.on(day(9), timeZone: jst), .spring)
-        XCTAssertEqual(TideName.on(day(11), timeZone: jst), .spring)
-        XCTAssertEqual(TideName.on(day(12), timeZone: jst), .middle)
+        // 11/12 の正午は月齢 2.8（整数部 2）なのでまだ大潮、11/13（3.8）から中潮
+        XCTAssertEqual(TideName.on(day(12), timeZone: jst), .spring)
+        XCTAssertEqual(TideName.on(day(13), timeZone: jst), .middle)
         // 11/24 が満月 → 11/23〜11/26 が大潮
         XCTAssertEqual(TideName.on(day(24), timeZone: jst), .spring)
         XCTAssertEqual(TideName.on(day(19), timeZone: jst), .neap)
