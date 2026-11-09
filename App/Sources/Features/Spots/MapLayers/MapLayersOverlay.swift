@@ -66,6 +66,9 @@ struct MapLayersControls: View {
                 if let error { Text(error).font(.system(size: 9)).foregroundStyle(DS.Color.textTertiary).lineLimit(1) }
                 Spacer()
             }
+            // 時刻バーは凡例の下（左上のひとまとまり）。画面の中ほどに置くと右のボタン列と漁港の一覧に重なっていた（2026-11-09 開発者の指摘）
+            MapTimeBar(hourOffset: $hourOffset, start: start, hours: hours)
+                .frame(height: 40)
         }
     }
 
@@ -85,7 +88,6 @@ struct MapTimeBar: View {
     @Binding var hourOffset: Int
     let start: Date
     let hours: Int
-    private let tz = TimeZone(identifier: "Asia/Tokyo") ?? .current
 
     var body: some View {
         GeometryReader { geo in
@@ -112,16 +114,17 @@ struct MapTimeBar: View {
         }
     }
 
-    private var label: String {
-        let d = start.addingTimeInterval(Double(hourOffset) * 3600)
-        let f = DateFormatter(); f.locale = Locale(identifier: "ja_JP"); f.timeZone = tz; f.dateFormat = "d日(E) H:00"
-        return f.string(from: d)
-    }
+    // ドラッグ中は毎フレーム呼ばれるので、フォーマッタは作り置き
+    private static let labelFormatter: DateFormatter = {
+        let f = DateFormatter(); f.locale = Locale(identifier: "ja_JP"); f.timeZone = TimeZone(identifier: "Asia/Tokyo"); f.dateFormat = "d日(E) H:00"; return f
+    }()
+    private static let dayFormatter: DateFormatter = {
+        let f = DateFormatter(); f.locale = Locale(identifier: "ja_JP"); f.timeZone = TimeZone(identifier: "Asia/Tokyo"); f.dateFormat = "d(E)"; return f
+    }()
 
-    private func dayLabel(_ d: Int) -> String {
-        let f = DateFormatter(); f.locale = Locale(identifier: "ja_JP"); f.timeZone = tz; f.dateFormat = "d(E)"
-        return f.string(from: start.addingTimeInterval(Double(d) * 86_400))
-    }
+    private var label: String { Self.labelFormatter.string(from: start.addingTimeInterval(Double(hourOffset) * 3600)) }
+
+    private func dayLabel(_ d: Int) -> String { Self.dayFormatter.string(from: start.addingTimeInterval(Double(d) * 86_400)) }
 }
 
 /// 地図レイヤーの設定（F-43）：表示する層のオンオフ、粒子、濃さ。釣り場画面のチップ左端と設定から開く
