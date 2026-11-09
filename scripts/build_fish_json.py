@@ -99,8 +99,8 @@ for o in checklist:
     for cand in (e["id"] + ".jpg", f"fb{code}.jpg"):
         if os.path.exists(os.path.join(a.images, cand)): img_file = cand; break
     if img_file and cr and "file" in cr:
-        e["image"] = img_file; e["imageCredit"] = cr
-        e["sources"].append({"name": "Wikimedia Commons（画像）", "url": cr.get("url")})
+        e["image"] = img_file; e["imageCredit"] = {k: v for k, v in cr.items() if k != "source"}
+        e["sources"].append({"name": ("iNaturalist（画像、" + cr.get("license", "") + "）") if cr.get("source") == "iNaturalist" else "Wikimedia Commons（画像）", "url": cr.get("url")})
     e = {k: v for k, v in e.items() if v not in (None, "", [], {})}
     entries.append(e)
 
@@ -119,7 +119,8 @@ for c in curated:
         e["missing"] = True
     cr = credits.get(c["id"])
     if cr and "file" in cr and os.path.exists(os.path.join(a.images, c["id"] + ".jpg")):
-        e["image"] = c["id"] + ".jpg"; e["imageCredit"] = cr; e["sources"].append({"name": "Wikimedia Commons（画像）", "url": cr.get("url")})
+        e["image"] = c["id"] + ".jpg"; e["imageCredit"] = {k: v for k, v in cr.items() if k != "source"}
+        e["sources"].append({"name": ("iNaturalist（画像、" + cr.get("license", "") + "）") if cr.get("source") == "iNaturalist" else "Wikimedia Commons（画像）", "url": cr.get("url")})
     entries.append({k: v for k, v in e.items() if v not in (None, "", [], {})})
 
 # 並び：釣りの分類がある種（五十音）→ 和名のある種（五十音）→ 推定和名 → 学名だけ
