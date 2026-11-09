@@ -92,7 +92,7 @@ final class FogStore {
 
     func sessions() throws -> [Core.Session] {
         if let m = sessionsMemo, m.revision == revision { return m.value }
-        let v = try context.fetch(FetchDescriptor<SessionRecord>(sortBy: [SortDescriptor(\.startedAt, order: .reverse)])).compactMap(\.core)
+        let v = try Perf.measure("釣行の読み込み") { try context.fetch(FetchDescriptor<SessionRecord>(sortBy: [SortDescriptor(\.startedAt, order: .reverse)])).compactMap(\.core) }
         sessionsMemo = (revision, v)
         return v
     }

@@ -3,7 +3,7 @@ import SwiftUI
 /// デザイントークン。docs/02_ui_design.md §1 が正。
 /// 値は選択中のテーマ（`ThemeStore.shared.theme`、F-49）から取る。`ThemeStore` は `@Observable` なので切替で再描画される
 enum DS {
-    @MainActor private static var palette: ThemePalette { ThemeStore.shared.theme.palette }
+    @MainActor private static var palette: ThemePalette { ThemeStore.shared.palette }
 
     enum Color {
         @MainActor static var background: SwiftUI.Color { palette.background }
@@ -34,10 +34,10 @@ enum DS {
     }
 
     enum Font {
-        @MainActor static func score(_ size: CGFloat = 96) -> SwiftUI.Font { .system(size: size, weight: .bold, design: ThemeStore.shared.theme.numberDesign) }
-        @MainActor static func number(_ size: CGFloat = 20) -> SwiftUI.Font { .system(size: size, weight: .semibold, design: ThemeStore.shared.theme.numberDesign) }
-        @MainActor static var label: SwiftUI.Font { .system(size: 13, weight: .medium, design: ThemeStore.shared.theme.fontDesign) }
-        @MainActor static var caption: SwiftUI.Font { .system(size: 11, weight: .regular, design: ThemeStore.shared.theme.fontDesign) }
+        @MainActor static func score(_ size: CGFloat = 96) -> SwiftUI.Font { .system(size: size, weight: .bold, design: ThemeStore.shared.numberDesign) }
+        @MainActor static func number(_ size: CGFloat = 20) -> SwiftUI.Font { .system(size: size, weight: .semibold, design: ThemeStore.shared.numberDesign) }
+        @MainActor static var label: SwiftUI.Font { .system(size: 13, weight: .medium, design: ThemeStore.shared.fontDesign) }
+        @MainActor static var caption: SwiftUI.Font { .system(size: 11, weight: .regular, design: ThemeStore.shared.fontDesign) }
     }
 
     enum Spacing {

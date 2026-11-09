@@ -48,6 +48,7 @@ final class CaptureViewModel {
     }
 
     func start() {
+        Perf.mark("撮影画面を開いた")
         // 解析は ARKit のスレッドで（6 フレームに 1 回）。結果だけメインへ
         depth.onFrame = { [weak self, analyzer] frame in
             guard let r = analyzer.analyze(frame) else { return }
@@ -57,6 +58,7 @@ final class CaptureViewModel {
     }
 
     func stop() {
+        Perf.mark("撮影画面を閉じた")
         depth.pause()
         depth.onFrame = nil
         if usingLocation { location?.endForegroundUpdates(); usingLocation = false }

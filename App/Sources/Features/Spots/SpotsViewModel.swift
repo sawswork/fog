@@ -10,7 +10,7 @@ final class SpotsViewModel {
         let spot: Spot
         let stats: Analytics.SpotStats
         let score: Int
-        let distanceM: Double?
+        var distanceM: Double?
         /// 地図検索で見つけた漁港（まだストアに無い）。「登録」で自分の釣り場になる
         var isCandidate: Bool = false
         /// 自分の釣果と針ロストの位置（カードの航空写真に点で出す。F-47）
@@ -49,8 +49,28 @@ final class SpotsViewModel {
     private var lastSearchedRegion: MKCoordinateRegion?
     private var searchTask: Task<Void, Never>?
 
-    /// 登録済み＋候補（近い順）
-    var allCards: [Card] { (cards + portCandidates).sorted { ($0.distanceM ?? .infinity) < ($1.distanceM ?? .infinity) } }
+    /// 登録済み＋候補（今の現在地から近い順）。並べ替えは現在地が 50 m 動くか中身が変わったときだけ
+    var allCards: [Card] {
+        let loc = currentLocation
+        let key = "\(cards.count)|\(catalogPorts.count)|\(searchPorts.count)|\(loc.map { "\(Int($0.latitude * 2000)),\(Int($0.longitude * 2000))" } ?? "-")|\(cardsVersion)"
+        if let m = allCardsMemo, m.key == key { return m.value }
+        let merged = (cards + portCandidates).map { card -> Card in
+            var c = card
+            if let loc, c.spot.coordinate.isPlausible { c.distanceM = Geo.distanceMeters(loc, c.spot.coordinate) }
+            return c
+        }
+        let sorted = merged.sorted { ($0.distanceM ?? .infinity) < ($1.distanceM ?? .infinity) }
+        allCardsMemo = (key, sorted)
+        return sorted
+    }
+    @ObservationIgnored private var allCardsMemo: (key: String, value: [Card])?
+    /// cards / 候補を作り直したら進める（並べ替えの鍵）
+    private var cardsVersion = 0
+
+    /// 釣果情報のピン（F-44）。計算は裏（港名 4,000 件 × 記事の文字検索は 1 秒近くかかる）で、結果だけここに置く
+    private(set) var feedPins: [FeedCatchExtractor.Pin] = []
+    private var feedPinsKey = ""
+    private var feedPinsTask: Task<Void, Never>?
 
     func attach(_ services: AppServices) {
         self.services = services
@@ -59,6 +79,10 @@ final class SpotsViewModel {
 
     func refresh() {
         guard let services else { return }
+        Perf.measure("釣り場カードの再計算") { refreshBody(services: services) }
+    }
+
+    private func refreshBody(services: AppServices) {
         let store = services.store
         let spots = (try? store.spots()) ?? []
         let sessions = (try? store.sessions()) ?? []
@@ -76,6 +100,7 @@ final class SpotsViewModel {
                         catchPoints: mine.flatMap(\.catches).map(\.coordinate).filter(\.isPlausible),
                         lossPoints: mine.flatMap(\.hookEvents).filter { $0.kind == .lost }.map(\.coordinate).filter(\.isPlausible))
         }.sorted { ($0.distanceM ?? .infinity) < ($1.distanceM ?? .infinity) }
+        cardsVersion += 1
     }
 
     // MARK: 漁港の自動表示（§7「自動検出した未登録の漁港・岸壁はグレーの点」）
@@ -110,6 +135,10 @@ final class SpotsViewModel {
     /// 同梱の港データから表示範囲の候補を作る
     private func catalogCandidates(in region: MKCoordinateRegion) {
         guard let services, !portCatalog.isEmpty else { return }
+        Perf.measure("港の候補の計算") { catalogCandidatesBody(services: services, region: region) }
+    }
+
+    private func catalogCandidatesBody(services: AppServices, region: MKCoordinateRegion) {
         let latR = (region.center.latitude - region.span.latitudeDelta / 2)...(region.center.latitude + region.span.latitudeDelta / 2)
         let lonR = (region.center.longitude - region.span.longitudeDelta / 2)...(region.center.longitude + region.span.longitudeDelta / 2)
         let existing = (try? services.store.spots()) ?? []
@@ -128,21 +157,41 @@ final class SpotsViewModel {
                             distanceM: currentLocation.map { Geo.distanceMeters($0, c) }, isCandidate: true))
         }
         catalogPorts = out
+        cardsVersion += 1
     }
 
     // MARK: 釣果情報のピン（F-44）
 
-    /// RSS の記事から取り出した「どこで何が釣れたか」。場所は同梱の港名と登録釣り場、魚種は図鑑の名前と別名
-    func feedPins() -> [FeedCatchExtractor.Pin] {
-        guard let services else { return [] }
+    /// RSS の記事から取り出した「どこで何が釣れたか」を裏で計算し直す。場所は同梱の港名と登録釣り場、魚種は図鑑の名前と別名。
+    /// 記事・仲間の釣果・釣り場・現在地（10 km 単位）が同じなら計算しない
+    func refreshFeedPins(enabled: Bool) {
+        guard let services else { return }
+        guard enabled else { feedPins = []; feedPinsKey = ""; return }
         let spots = ((try? services.store.spots()) ?? []).filter { $0.isRegistered && $0.coordinate.isPlausible }.map { (name: $0.name, coordinate: $0.coordinate) }
         let near = currentLocation ?? spots.first?.coordinate
-        let places = FeedCatchExtractor.places(spots: spots, ports: portCatalog.ports, near: near)
-        let words = FeedCatchExtractor.speciesWords((try? services.store.species()) ?? Species.initialCatalog)
-        var catches = services.feeds.items.flatMap { FeedCatchExtractor.extract($0, places: places, speciesWords: words) }
-        // 仲間の釣果（F-54）も同じピンに載せる（場所は釣り場名、座標は撮影位置）
-        catches += services.party.others.filter { $0.coordinate.isPlausible }.map { $0.feedCatch() }
-        return FeedCatchExtractor.pins(catches)
+        let key = "\(services.feeds.revision)|\(services.party.revision)|\(spots.map(\.name).joined(separator: ","))|\(near.map { "\(Int($0.latitude * 10)),\(Int($0.longitude * 10))" } ?? "-")"
+        guard key != feedPinsKey else { return }
+        feedPinsKey = key
+        let items = services.feeds.items
+        let shared = services.party.others.filter { $0.coordinate.isPlausible }.map { $0.feedCatch() }
+        let catalog = (try? services.store.species()) ?? Species.initialCatalog
+        let ports = portCatalog.ports
+        feedPinsTask?.cancel()
+        feedPinsTask = Task.detached(priority: .userInitiated) { [weak self] in
+            let places = FeedCatchExtractor.places(spots: spots, ports: ports, near: near)
+            let words = FeedCatchExtractor.speciesWords(catalog)
+            var catches: [FeedCatch] = []
+            for item in items {
+                if Task.isCancelled { return }
+                catches += FeedCatchExtractor.extract(item, places: places, speciesWords: words)
+            }
+            catches += shared
+            let pins = FeedCatchExtractor.pins(catches)
+            await MainActor.run { [weak self] in
+                guard let self, self.feedPinsKey == key else { return }
+                self.feedPins = pins
+            }
+        }
     }
 
     // MARK: 車の所要時間・距離（F-56）と経路（F-57）
@@ -290,6 +339,7 @@ final class SpotsViewModel {
                             distanceM: currentLocation.map { Geo.distanceMeters($0, c) }, isCandidate: true))
         }
         searchPorts = out
+        cardsVersion += 1
     }
 
     /// 名前が「〜漁港」「〜港」「〜岸壁」「〜埠頭」「〜防波堤」で終わるものだけを漁港とみなす。

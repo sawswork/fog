@@ -88,45 +88,102 @@ struct PhotoViewer: View {
     }
 }
 
-/// 釣行の軌跡と釣果の位置を全画面の地図で（F-55）。ピンチ・ドラッグで動かせる
+/// 釣行の軌跡と釣果の位置を全画面の地図で（F-55）。ピンチ・ドラッグで動かせる。
+/// 「位置を直す」で釣果を選んで地図をタップすると、その釣果の位置を置き直せる（F-59。GPS がずれていたときの手直し）
 struct SessionMapSheet: View {
     let session: Core.Session
     let spotName: String
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppServices.self) private var services
+    @State private var catches: [Catch] = []
+    @State private var editing = false
+    @State private var selectedCatchID: UUID?
+    @State private var moved = 0
 
     var body: some View {
         let coords = session.track.map(\.coordinate).filter(\.isPlausible).map(\.cl)
-        let catches = session.catches.filter { $0.coordinate.isPlausible }
-        let center = coords.isEmpty ? catches.first?.coordinate.cl : coords[coords.count / 2]
+        let shown = catches.filter { $0.coordinate.isPlausible }
+        let center = coords.isEmpty ? shown.first?.coordinate.cl : coords[coords.count / 2]
         ZStack(alignment: .top) {
-            Map(initialPosition: .region(MKCoordinateRegion(center: center ?? CLLocationCoordinate2D(latitude: 41.77, longitude: 140.73), latitudinalMeters: 700, longitudinalMeters: 700)),
-                interactionModes: [.pan, .zoom, .rotate]) {
-                if coords.count >= 2 { MapPolyline(coordinates: coords).stroke(DS.Color.accent, lineWidth: 4) }
-                ForEach(catches, id: \.id) { c in
-                    Annotation(c.species + (c.lengthCm.map { " \(Int($0.rounded()))" } ?? ""), coordinate: c.coordinate.cl) {
-                        Circle().fill(DS.Color.accent).frame(width: 14, height: 14).overlay(Circle().stroke(.white, lineWidth: 2))
+            MapReader { proxy in
+                Map(initialPosition: .region(MKCoordinateRegion(center: center ?? CLLocationCoordinate2D(latitude: 41.77, longitude: 140.73), latitudinalMeters: 700, longitudinalMeters: 700)),
+                    interactionModes: [.pan, .zoom, .rotate]) {
+                    if coords.count >= 2 { MapPolyline(coordinates: coords).stroke(DS.Color.accent, lineWidth: 4) }
+                    ForEach(shown, id: \.id) { c in
+                        Annotation(c.species + (c.lengthCm.map { " \(Int($0.rounded()))" } ?? ""), coordinate: c.coordinate.cl) {
+                            Circle().fill(selectedCatchID == c.id && editing ? DS.Color.sun : DS.Color.accent).frame(width: 14, height: 14).overlay(Circle().stroke(.white, lineWidth: 2))
+                                .scaleEffect(selectedCatchID == c.id && editing ? 1.4 : 1)
+                        }
+                    }
+                    ForEach(session.hookEvents.filter { $0.kind == .lost && $0.coordinate.isPlausible }, id: \.id) { e in
+                        Annotation("", coordinate: e.coordinate.cl) { Circle().fill(.white).frame(width: 8, height: 8) }
                     }
                 }
-                ForEach(session.hookEvents.filter { $0.kind == .lost && $0.coordinate.isPlausible }, id: \.id) { e in
-                    Annotation("", coordinate: e.coordinate.cl) { Circle().fill(.white).frame(width: 8, height: 8) }
+                .mapStyle(.hybrid(elevation: .flat, pointsOfInterest: .excludingAll))
+                .ignoresSafeArea()
+                // 位置を直すモード：地図をタップした場所へ、選んだ釣果を動かす
+                .onTapGesture(coordinateSpace: .local) { point in
+                    guard editing, let id = selectedCatchID, let c = proxy.convert(point, from: .local) else { return }
+                    let coordinate = Coordinate(latitude: c.latitude, longitude: c.longitude)
+                    services.capture.setCoordinate(catchID: id, coordinate: coordinate)
+                    if let i = catches.firstIndex(where: { $0.id == id }) { catches[i].coordinate = coordinate }
+                    moved += 1
                 }
             }
-            .mapStyle(.hybrid(elevation: .flat, pointsOfInterest: .excludingAll))
-            .ignoresSafeArea()
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(spotName).font(DS.Font.number(18)).foregroundStyle(.white)
-                    Text("\(session.catches.count)尾 · 軌跡 \(coords.count) 点").font(DS.Font.caption).foregroundStyle(.white.opacity(0.75))
+            VStack(spacing: DS.Spacing.s) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(spotName).font(DS.Font.number(18)).foregroundStyle(.white)
+                        Text("\(session.catches.count)尾 · 軌跡 \(coords.count) 点").font(DS.Font.caption).foregroundStyle(.white.opacity(0.75))
+                    }
+                    .padding(DS.Spacing.m).background(Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
+                    Spacer()
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+                            .frame(width: 36, height: 36).background(Color.black.opacity(0.55), in: Circle())
+                    }
+                    .buttonStyle(.plain)
                 }
-                .padding(DS.Spacing.m).background(Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
                 Spacer()
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
-                        .frame(width: 36, height: 36).background(Color.black.opacity(0.55), in: Circle())
-                }
-                .buttonStyle(.plain)
+                if !catches.isEmpty { editBar }
             }
             .padding(DS.Spacing.l)
         }
+        .onAppear { catches = session.catches; selectedCatchID = session.catches.first?.id; Perf.mark("釣行の地図を開いた") }
+    }
+
+    /// 下の帯：「位置を直す」→ 釣果のチップを選んで地図をタップ。「完了」で戻る
+    private var editBar: some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.s) {
+            if editing {
+                Text(moved > 0 ? "動かしました（\(moved) 回）。続けてタップで置き直せます" : "直したい釣果を選んで、地図の正しい場所をタップ")
+                    .font(DS.Font.caption).foregroundStyle(.white.opacity(0.85))
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: DS.Spacing.s) {
+                        ForEach(catches, id: \.id) { c in
+                            Button { selectedCatchID = c.id } label: {
+                                Text("\(JPFormat.hm(c.at)) \(c.species.isEmpty ? "魚" : c.species)\(c.lengthCm.map { " \(Int($0.rounded()))" } ?? "")")
+                                    .font(DS.Font.caption).foregroundStyle(selectedCatchID == c.id ? DS.Color.background : .white)
+                                    .padding(.horizontal, DS.Spacing.m).padding(.vertical, 6)
+                                    .background(selectedCatchID == c.id ? DS.Color.sun : Color.white.opacity(0.18), in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+            HStack {
+                Spacer()
+                Button { editing.toggle() } label: {
+                    Label(editing ? "完了" : "釣れた位置を直す", systemImage: editing ? "checkmark" : "mappin.and.ellipse")
+                        .font(DS.Font.label).foregroundStyle(editing ? DS.Color.background : .white)
+                        .padding(.horizontal, DS.Spacing.l).padding(.vertical, DS.Spacing.s)
+                        .background(editing ? DS.Color.accent : Color.black.opacity(0.55), in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(DS.Spacing.m)
+        .background(Color.black.opacity(editing ? 0.55 : 0), in: RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous))
     }
 }

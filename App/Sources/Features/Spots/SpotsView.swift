@@ -25,7 +25,7 @@ struct SpotsView: View {
     // 釣果情報のピン（F-44）
     /// 既定で表示（2026-11-05 開発者の指示）。オフにしたら覚える
     @State private var feedPinsOn = UserDefaults.standard.object(forKey: "fog.feedPins.on") as? Bool ?? true
-    @State private var feedPins: [FeedCatchExtractor.Pin] = []
+    private var feedPins: [FeedCatchExtractor.Pin] { model.feedPins }
     @State private var feedPin: FeedCatchExtractor.Pin?
     @State private var rasterTask: Task<Void, Never>?
     /// 時刻ごとの色面（同じ層・同じ範囲・同じ版の間だけ有効）。時刻バーを戻しても即座に出る
@@ -138,7 +138,9 @@ struct SpotsView: View {
             model.attach(services)
             // 地図を開いている間だけ位置を取り続ける（現在地の点・距離・所要時間が動く）。閉じたら止める
             services.location.beginForegroundUpdates()
-            if feedPinsOn { feedPins = model.feedPins(); Task { await services.feeds.refreshIfNeeded(); await services.party.syncIfNeeded(store: services.store) } }
+            Perf.mark("釣り場画面を開いた")
+            model.refreshFeedPins(enabled: feedPinsOn)
+            if feedPinsOn { Task { await services.feeds.refreshIfNeeded(); await services.party.syncIfNeeded(store: services.store) } }
             if selectedID != nil {
                 // 戻ってきたときは前の選択のまま
             } else if let first = model.cards.first(where: { $0.spot.coordinate.isPlausible }) {
@@ -150,9 +152,9 @@ struct SpotsView: View {
                 camera = .region(MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 41.77, longitude: 140.73), latitudinalMeters: 20_000, longitudinalMeters: 20_000))
             }
         }
-        .onDisappear { services.location.endForegroundUpdates() }
-        .onReceive(NotificationCenter.default.publisher(for: .fogStoreDidChange)) { _ in model.refresh(); notes = (try? services.store.notes()) ?? [] }
-        .onChange(of: services.party.revision) { _, _ in if feedPinsOn { feedPins = model.feedPins() } }
+        .onDisappear { services.location.endForegroundUpdates(); Perf.mark("釣り場画面を閉じた") }
+        .onReceive(NotificationCenter.default.publisher(for: .fogStoreDidChange)) { _ in model.refresh(); notes = (try? services.store.notes()) ?? []; model.refreshFeedPins(enabled: feedPinsOn) }
+        .onChange(of: services.party.revision) { _, _ in model.refreshFeedPins(enabled: feedPinsOn) }
         .task { notes = (try? services.store.notes()) ?? [] }
         .sheet(item: $noteDraft) { draft in
             NoteEditSheet(coordinate: draft.coordinate, existing: nil, placeHint: model.placeName(near: draft.coordinate)).presentationDetents([.medium])
@@ -163,10 +165,10 @@ struct SpotsView: View {
         .onChange(of: selectedID) { _, id in
             if let id, let c = model.allCards.first(where: { $0.spot.id == id }), c.spot.coordinate.isPlausible { withAnimation { camera = .region(region(for: c.spot.coordinate)) } }
         }
-        .sheet(item: $detail) { SpotDetailView(card: $0).onDisappear { model.refresh() } }
+        .sheet(item: $detail) { SpotDetailView(card: $0) }
         .sheet(isPresented: $showCompare) { SpotCompareSheet(model: model).presentationDetents([.large]) }
         .sheet(item: $feedPin) { FeedPinSheet(pin: $0).presentationDetents([.medium, .large]) }
-        .onChange(of: services.feeds.revision) { _, _ in if feedPinsOn { feedPins = model.feedPins() } }
+        .onChange(of: services.feeds.revision) { _, _ in model.refreshFeedPins(enabled: feedPinsOn) }
         .sheet(isPresented: $showSearch) { SpotSearchSheet { item in
             showSearch = false
             camera = .region(MKCoordinateRegion(center: item.placemark.coordinate, latitudinalMeters: 3000, longitudinalMeters: 3000))
@@ -274,8 +276,8 @@ struct SpotsView: View {
     private func toggleFeedPins() {
         feedPinsOn.toggle()
         UserDefaults.standard.set(feedPinsOn, forKey: "fog.feedPins.on")
-        guard feedPinsOn else { feedPins = []; return }
-        feedPins = model.feedPins()
+        model.refreshFeedPins(enabled: feedPinsOn)
+        guard feedPinsOn else { return }
         Task { await services.feeds.refreshIfNeeded() }
     }
 
@@ -358,8 +360,8 @@ struct SpotsView: View {
     /// 右下の縦のリスト（漁港名・釣れ率・距離か車の時間）と、選んだ漁港の四角い詳細パネル（左）。2026-11-09 開発者の指示でカードの横並びから変更
     private var cards: some View {
         GeometryReader { geo in
-            let listWidth: CGFloat = 128
-            let panelSide = min(geo.size.width - listWidth - DS.Spacing.l * 3, geo.size.height * 0.42)
+            let listWidth: CGFloat = 150
+            let panelSide = min(geo.size.width - listWidth - DS.Spacing.l * 3, geo.size.height * 0.40)
             VStack(spacing: DS.Spacing.s) {
                 Spacer()
                 if layersOn {
@@ -423,13 +425,15 @@ struct SpotListRow: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 6) {
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 4) {
-                    Circle().fill(card.spot.isRegistered ? DS.Color.accent : DS.Color.textTertiary).frame(width: 5, height: 5)
-                    Text(card.spot.name).font(.system(size: 12, weight: .semibold)).foregroundStyle(DS.Color.textPrimary).lineLimit(1).minimumScaleFactor(0.75)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .top, spacing: 4) {
+                    Circle().fill(card.spot.isRegistered ? DS.Color.accent : DS.Color.textTertiary).frame(width: 5, height: 5).padding(.top, 5)
+                    // 名前は 2 行まで（「はこだて漁港」のような長い名前が切れないように）
+                    Text(card.spot.name).font(.system(size: 12, weight: .semibold)).foregroundStyle(DS.Color.textPrimary)
+                        .lineLimit(2).minimumScaleFactor(0.8).fixedSize(horizontal: false, vertical: true)
                 }
                 Text(eta.map { Self.short($0) } ?? (distanceM.map { $0 >= 1000 ? String(format: "%.1f km", $0 / 1000) : "\(Int($0)) m" } ?? "—"))
-                    .font(.system(size: 10)).foregroundStyle(DS.Color.textTertiary).lineLimit(1)
+                    .font(.system(size: 10)).foregroundStyle(DS.Color.textTertiary).lineLimit(1).minimumScaleFactor(0.8)
             }
             Spacer(minLength: 2)
             Text("\(card.score)").font(DS.Font.number(17)).foregroundStyle(card.score >= 70 ? DS.Color.accent : DS.Color.textPrimary)
@@ -439,11 +443,11 @@ struct SpotListRow: View {
         .contentShape(Rectangle())
     }
 
-    /// 「車 25分 · 18km」を 1 行に収める短い形
+    /// 「車25分·18km」を 1 行に収める短い形
     static func short(_ e: SpotsViewModel.DriveETA) -> String {
         let m = Int((e.seconds / 60).rounded())
         let t = m >= 60 ? "\(m / 60)h\(m % 60 == 0 ? "" : "\(m % 60)m")" : "\(m)分"
-        return "車 \(t) · " + (e.meters >= 10_000 ? String(format: "%.0fkm", e.meters / 1000) : String(format: "%.1fkm", e.meters / 1000))
+        return "車\(t)·" + (e.meters >= 10_000 ? String(format: "%.0fkm", e.meters / 1000) : String(format: "%.1fkm", e.meters / 1000))
     }
 }
 
@@ -475,10 +479,11 @@ struct SpotDetailPanel: View {
                 .buttonStyle(.plain)
                 .padding(4)
             }
-            HStack(alignment: .firstTextBaseline) {
-                Text(card.spot.name).font(.system(size: 16, weight: .bold)).foregroundStyle(DS.Color.textPrimary).lineLimit(1).minimumScaleFactor(0.7)
-                Spacer()
-                Text("\(card.score)").font(DS.Font.score(26)).foregroundStyle(card.score >= 70 ? DS.Color.accent : DS.Color.textPrimary)
+            HStack(alignment: .firstTextBaseline, spacing: DS.Spacing.s) {
+                Text(card.spot.name).font(.system(size: 15, weight: .bold)).foregroundStyle(DS.Color.textPrimary).lineLimit(2).minimumScaleFactor(0.75)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+                Text("\(card.score)").font(DS.Font.score(24)).foregroundStyle(card.score >= 70 ? DS.Color.accent : DS.Color.textPrimary)
             }
             HStack(spacing: DS.Spacing.s) {
                 if card.isCandidate {

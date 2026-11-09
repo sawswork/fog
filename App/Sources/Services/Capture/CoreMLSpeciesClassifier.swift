@@ -26,12 +26,12 @@ final class CoreMLSpeciesClassifier: SpeciesClassifying, @unchecked Sendable {
 
     var isModelAvailable: Bool { model != nil }
 
-    /// モデルのバージョン（設定画面「判定」に出す）
-    static var modelVersion: String {
+    /// モデルのバージョン（設定画面「判定」に出す）。設定の一覧の body で毎回モデルを開いていたので 1 回だけ読む
+    static let modelVersion: String = {
         guard let url = Bundle.main.url(forResource: "FishClassifier", withExtension: "mlmodelc"),
               let ml = try? MLModel(contentsOf: url) else { return "未同梱" }
         return ml.modelDescription.metadata[.versionString] as? String ?? "1"
-    }
+    }()
 
     static func loadCorrections() -> SpeciesCorrectionTable {
         guard let data = UserDefaults.standard.data(forKey: correctionKey),

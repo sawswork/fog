@@ -15,6 +15,10 @@ enum SessionReviewer {
     }
 
     static func review(_ session: Core.Session, services: AppServices, engine: ScoreEngine? = nil) -> Output? {
+        Perf.measure("答え合わせの計算") { reviewBody(session, services: services, engine: engine) }
+    }
+
+    private static func reviewBody(_ session: Core.Session, services: AppServices, engine: ScoreEngine?) -> Output? {
         let env = services.environment
         let coordinate = (try? services.store.spot(id: session.spotID))?.coordinate ?? session.snapshots.first?.coordinate ?? session.catches.first?.coordinate
         guard let coordinate, coordinate.isPlausible else { return nil }

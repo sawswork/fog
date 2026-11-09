@@ -38,6 +38,8 @@ struct SessionDetailView: View {
             .padding(DS.Spacing.l)
         }
         .background(ThemeBackground(name: .bgDetail))
+        .onAppear { Perf.mark("釣行詳細を開いた") }
+        .onDisappear { Perf.mark("釣行詳細を閉じた") }
         .task { computeReview() }
         .fullScreenCover(isPresented: $showMap) { SessionMapSheet(session: session, spotName: spotName) }
         .fullScreenCover(item: $viewing) { c in PhotoViewer(catchItem: c) }

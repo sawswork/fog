@@ -86,7 +86,7 @@ struct GuideView: View {
     private func reload() {
         // 図鑑は自分が釣った魚だけ（他の人の魚を自分の端末で撮った分は入れない。F-54）
         let sessions = (try? services.store.ownSessions()) ?? []
-        entries = Guide.entries(sessions: sessions)
+        entries = Perf.measure("図鑑の集計") { Guide.entries(sessions: sessions) }
     }
 }
 
@@ -220,7 +220,8 @@ struct SpeciesDetailView: View {
             }
         }
         .background(ThemeBackground(name: .bgDetail))
-        .onAppear(perform: reload)
+        .onAppear { Perf.mark("魚種詳細を開いた"); reload() }
+        .onDisappear { Perf.mark("魚種詳細を閉じた") }
         .sheet(item: $editing) { c in CatchEditSheet(catchItem: c) { reload() }.presentationDetents([.large]) }
         .fullScreenCover(item: $viewing) { c in PhotoViewer(catchItem: c) }
     }
