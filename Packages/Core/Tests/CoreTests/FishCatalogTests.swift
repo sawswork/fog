@@ -68,9 +68,24 @@ final class FishCatalogTests: XCTestCase {
         XCTAssertEqual(c.entries[0].watersJa, ["海水"])
     }
 
-    func testBundledCatalogDecodesIfPresent() {
-        // 同梱データが無いときは空で動く（CI の port-data と同じ考え）
+    func testBundledCatalogDecodes() {
+        // 同梱の fish.json が必ず読める（1 件でも読めないと全体が空になり、図鑑に何も出なくなった 2026-11-09 の再発防止）
         let c = FishCatalog.bundled()
+        XCTAssertGreaterThan(c.entries.count, 1000)
+        XCTAssertGreaterThan(c.namedCount, 500)
+        XCTAssertNotNil(c.entry(forSpecies: "アイナメ"))
         for e in c.entries.prefix(5) { XCTAssertFalse(e.name.isEmpty) }
+    }
+
+    func testMinimalEntryDecodes() throws {
+        // 別名・分類・出典のキーが無くても読める
+        let json = #"{"entries":[{"id":"x","name":"テスト"},{"id":"y","name":"ふたつめ","sources":[{"name":"FishBase"}],"depthMaxM":50,"spawningMonths":[4,5]}]}"#
+        let c = try JSONDecoder().decode(FishCatalog.self, from: Data(json.utf8))
+        XCTAssertEqual(c.entries.count, 2)
+        XCTAssertEqual(c.entries[0].aliases, [])
+        XCTAssertEqual(c.entries[0].sources.count, 0)
+        XCTAssertEqual(c.entries[1].depthMaxM, 50)
+        XCTAssertEqual(c.entries[1].sources.first?.name, "FishBase")
+        XCTAssertEqual(c.filtered(query: "ふたつめ").map(\.id), ["y"])
     }
 }
