@@ -393,7 +393,9 @@ struct HomeView: View {
     // MARK: 今（4 チップ）
 
     private var chipsRow: some View {
-        HStack(spacing: DS.Spacing.s) {
+        let style = ThemeStore.shared.theme.spec?.style
+        let glass = style?.glass == true
+        return HStack(spacing: DS.Spacing.s) {
             ForEach(model.chips) { chip in
                 Button { chipDetail = chip } label: {
                     VStack(spacing: 3) {
@@ -408,7 +410,25 @@ struct HomeView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .padding(.vertical, DS.Spacing.s)
                     .padding(.horizontal, DS.Spacing.xs)
-                    .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .background {
+                        // テーマの style.glass：すりガラス＋薄い白い枠（F-58、紫のテーマ）。無ければ従来の面
+                        if glass {
+                            RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.ultraThinMaterial)
+                                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(DS.Color.panel.opacity(0.35)))
+                                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Color.white.opacity(0.35), lineWidth: 1))
+                        } else {
+                            RoundedRectangle(cornerRadius: 18, style: .continuous).fill(DS.Color.panel)
+                        }
+                    }
+                    .overlay(alignment: .topLeading) {
+                        if let o = style?.chipOrnament, !o.isEmpty { Text(o).font(.system(size: 9)).foregroundStyle(DS.Color.textPrimary.opacity(0.7)).padding(5) }
+                    }
+                    .overlay(alignment: .bottomTrailing) {
+                        if let o = style?.chipOrnament, !o.isEmpty { Text(o).font(.system(size: 9)).foregroundStyle(DS.Color.textPrimary.opacity(0.45)).padding(5) }
+                    }
+                    // 傾き（style.chipTilt：面内、style.chipPerspective：縦軸まわり）
+                    .rotation3DEffect(.degrees(style?.chipPerspective ?? 0), axis: (x: 0, y: 1, z: 0), perspective: 0.7)
+                    .rotationEffect(.degrees(style?.chipTilt ?? 0))
                 }
                 .buttonStyle(.plain)
             }
@@ -601,7 +621,15 @@ struct ForecastChart: View {
             .padding(.horizontal, DS.Spacing.m)
             .padding(.vertical, DS.Spacing.s)
             .frame(width: geo.size.width, height: geo.size.height)
-            .background(showsPanel ? DS.Color.panel : Color.clear, in: RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous))
+            .background {
+                if showsPanel, ThemeStore.shared.theme.spec?.style?.glass == true {
+                    RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous).fill(.ultraThinMaterial)
+                        .overlay(RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous).fill(DS.Color.panel.opacity(0.3)))
+                        .overlay(RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous).strokeBorder(Color.white.opacity(0.3), lineWidth: 1))
+                } else if showsPanel {
+                    RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous).fill(DS.Color.panel)
+                }
+            }
             .contentShape(Rectangle())
             .gesture(DragGesture(minimumDistance: 30).onEnded { v in
                 if v.translation.width < -30 { step(+1) } else if v.translation.width > 30 { step(-1) }

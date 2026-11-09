@@ -105,4 +105,14 @@ final class ThemeSpecTests: XCTestCase {
         XCTAssertNil(char.effect)
         XCTAssertNil(char.parsedColor)
     }
+
+    func testStyleSection() throws {
+        let spec = try ThemeSpec.parse(Data(#"{"style":{"chipTilt":-5,"chipPerspective":18,"glass":true,"chipOrnament":"✦","captureSymbol":"moon.fill"}}"#.utf8))
+        XCTAssertEqual(spec.style?.chipTilt, -5)
+        XCTAssertEqual(spec.style?.chipPerspective, 18)
+        XCTAssertEqual(spec.style?.glass, true)
+        XCTAssertEqual(spec.style?.chipOrnament, "✦")
+        XCTAssertEqual(spec.style?.captureSymbol, "moon.fill")
+        XCTAssertNil(try ThemeSpec.parse(Data("{}".utf8)).style)
+    }
 }

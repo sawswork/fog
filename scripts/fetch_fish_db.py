@@ -292,6 +292,35 @@ def months_from(text):
                 if k in text: out.update(v); break
     return sorted(out)
 
+def lengths_from(text):
+    """Wikipedia の本文から「全長 30-40 cm」「最大 120 cm」「1 m に達する」などを拾う → (max, typical)"""
+    if not text: return (None, None)
+    t = text.replace("センチメートル", "cm").replace("センチ", "cm").replace("メートル", "m").replace("〜", "-").replace("～", "-").replace("–", "-")
+    t = re.sub(r"（\s*(?:cm|m)\s*）", "", t)
+    U = r"(cm|m)(?![a-zA-Z])"
+    def num(x, unit):
+        v = float(x); return v * 100 if unit == "m" else v
+    mx = None; typ = None
+    for m in re.finditer(r"最大(?:で|では|級は|サイズは)?(?:全長|体長|胴長|長さ)?(?:は|が)?約?\s*([\d.]+)\s*" + U, t):
+        mx = max(mx or 0, num(m.group(1), m.group(2)))
+    for m in re.finditer(r"([\d.]+)\s*" + U + r"(?:を超える|に達する|にもなる|以上になる|に成長する|を超す|に及ぶ)", t):
+        mx = max(mx or 0, num(m.group(1), m.group(2)))
+    m = re.search(r"(?:全長|体長|胴長)(?:は|が)?約?\s*([\d.]+)\s*-\s*([\d.]+)\s*" + U, t)
+    if m:
+        a, b = num(m.group(1), m.group(3)), num(m.group(2), m.group(3))
+        typ = (a + b) / 2
+        if mx is None: mx = b
+    else:
+        m = re.search(r"(?:全長|体長|胴長)(?:は|が)?約?\s*([\d.]+)\s*" + U + r"\s*(?:ほど|程度|前後|くらい)", t)
+        if m: typ = num(m.group(1), m.group(2))
+        else:
+            m = re.search(r"(?:全長|体長|胴長)(?:は|が)?約?\s*([\d.]+)\s*" + U, t)
+            if m and mx is None: mx = num(m.group(1), m.group(2))
+    if mx is not None and (mx < 2 or mx > 2000): mx = None
+    if typ is not None and (typ < 1 or typ > 2000): typ = None
+    if mx is not None and typ is not None and typ > mx: mx = typ
+    return (mx, typ)
+
 def spawning_from(sec):
     for k in ("生態", "繁殖", "産卵", "生活史"):
         t = find_section(sec, [k])
@@ -306,8 +335,8 @@ def season_from(sec):
     texts = [find_section(sec, [k]) for k in ("人間", "利用", "釣り", "漁業", "食", "料理")] + [sec.get("lead", "")]
     for t in texts:
         if not t: continue
-        m = re.search(r"旬は[^。]{1,40}", t) or re.search(r"[^。]{1,40}(?:が|を)旬[^。]{0,20}", t) or re.search(r"[^。]{1,40}旬[^。]{1,30}", t)
-        if m and re.search(r"[春夏秋冬月]", m.group(0)): return m.group(0)
+        m = re.search(r"旬は[^。」]{1,40}", t) or re.search(r"[^。「」]{1,40}(?:が|を)旬[^。」]{0,20}", t) or re.search(r"[^。「」]{1,40}旬[^。」]{1,30}", t)
+        if m and re.search(r"[春夏秋冬月]", m.group(0)): return m.group(0).strip("「」 ")
     return ""
 
 def main():

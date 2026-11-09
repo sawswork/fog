@@ -55,6 +55,12 @@ public struct FishEntry: Codable, Identifiable, Hashable, Sendable {
     public var maxLengthCm: Double?
     public var lengthType: String?
     public var commonLengthCm: Double?
+    /// Wikipedia の本文から拾った「全長 30〜40 cm」の目安（FishBase の commonLength が無いときの代わり）
+    public var typicalLengthCm: Double?
+    /// 成熟サイズ（FishBase の Lm。これより小さいのはリリースの目安）
+    public var maturityLengthCm: Double?
+    /// 最大全長の出どころ：fishbase / wikipedia
+    public var lengthSource: String?
     public var maxWeightKg: Double?
     public var environment: String?
     public var waters: [String]?
@@ -83,7 +89,7 @@ public struct FishEntry: Codable, Identifiable, Hashable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id, name, aliases, groups, scientificName, englishName, nameRomaji, nameEstimated, family, familySci, order, status, image, imageCredit
         case summary, morphology, ecology, distributionJa, usage, spawning, spawningMonths, seasonNote, seasonMonths
-        case maxLengthCm, lengthType, commonLengthCm, maxWeightKg, environment, waters, habitatType, depthMinM, depthMaxM, climate, tempMinC, tempMaxC
+        case maxLengthCm, lengthType, commonLengthCm, typicalLengthCm, maturityLengthCm, lengthSource, maxWeightKg, environment, waters, habitatType, depthMinM, depthMaxM, climate, tempMinC, tempMaxC
         case distribution, description, biology, reproduction, sources, missing
     }
 
@@ -116,6 +122,9 @@ public struct FishEntry: Codable, Identifiable, Hashable, Sendable {
         maxLengthCm = try c.decodeIfPresent(Double.self, forKey: .maxLengthCm)
         lengthType = try c.decodeIfPresent(String.self, forKey: .lengthType)
         commonLengthCm = try c.decodeIfPresent(Double.self, forKey: .commonLengthCm)
+        typicalLengthCm = try c.decodeIfPresent(Double.self, forKey: .typicalLengthCm)
+        maturityLengthCm = try c.decodeIfPresent(Double.self, forKey: .maturityLengthCm)
+        lengthSource = try c.decodeIfPresent(String.self, forKey: .lengthSource)
         maxWeightKg = try c.decodeIfPresent(Double.self, forKey: .maxWeightKg)
         environment = try c.decodeIfPresent(String.self, forKey: .environment)
         waters = try c.decodeIfPresent([String].self, forKey: .waters)
@@ -240,19 +249,21 @@ public enum FishSearch {
 /// 同梱の fish.json
 public struct FishCatalog: Codable, Sendable {
     public var generatedAt: String?
-    public var entries: [FishEntry] { didSet { index = entries.map(\.searchText) } }
-    /// 検索用の正規化済み文字（entries と同じ順。数千種を毎回正規化しないための作り置き）
-    private var index: [String] = []
+    public var entries: [FishEntry] { didSet { index = Self.buildIndex(entries) } }
+    /// 検索用の正規化済み文字の UTF-8（entries と同じ順）。String.contains は Unicode 正規化で遅いので、バイト列の部分一致で引く
+    private var index: [Data] = []
+
+    static func buildIndex(_ entries: [FishEntry]) -> [Data] { entries.map { Data($0.searchText.utf8) } }
 
     enum CodingKeys: String, CodingKey { case generatedAt, entries }
 
-    public init(generatedAt: String? = nil, entries: [FishEntry]) { self.generatedAt = generatedAt; self.entries = entries; index = entries.map(\.searchText) }
+    public init(generatedAt: String? = nil, entries: [FishEntry]) { self.generatedAt = generatedAt; self.entries = entries; index = Self.buildIndex(entries) }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         generatedAt = try c.decodeIfPresent(String.self, forKey: .generatedAt)
         entries = try c.decodeIfPresent([FishEntry].self, forKey: .entries) ?? []
-        index = entries.map(\.searchText)
+        index = Self.buildIndex(entries)
     }
 
     /// 和名のある種の数
@@ -291,6 +302,7 @@ public struct FishCatalog: Codable, Sendable {
     public func filtered(query: String = "", group: String? = nil, family: String? = nil, month: Int? = nil, waters: String? = nil,
                          namedOnly: Bool = false, caughtOnly: Set<String>? = nil) -> [FishEntry] {
         let tokens = FishSearch.normalize(query).split(whereSeparator: { $0 == " " || $0 == "　" }).map(String.init).filter { !$0.isEmpty }
+        let tokenBytes = tokens.map { Data($0.utf8) }
         var out: [FishEntry] = []
         out.reserveCapacity(64)
         for (i, e) in entries.enumerated() {
@@ -300,9 +312,14 @@ public struct FishCatalog: Codable, Sendable {
             if let waters, !e.watersJa.contains(waters) { continue }
             if namedOnly, !e.hasJapaneseName { continue }
             if let caughtOnly, !caughtOnly.contains(e.id) { continue }
-            if !tokens.isEmpty {
-                let text = i < index.count ? index[i] : e.searchText
-                if !tokens.allSatisfy({ text.contains($0) }) { continue }
+            if !tokenBytes.isEmpty {
+                if i < index.count {
+                    let text = index[i]
+                    if !tokenBytes.allSatisfy({ text.range(of: $0) != nil }) { continue }
+                } else {
+                    let text = e.searchText
+                    if !tokens.allSatisfy({ text.contains($0) }) { continue }
+                }
             }
             out.append(e)
         }

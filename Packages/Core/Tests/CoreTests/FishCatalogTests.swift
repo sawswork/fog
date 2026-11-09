@@ -88,4 +88,33 @@ final class FishCatalogTests: XCTestCase {
         XCTAssertEqual(c.entries[1].sources.first?.name, "FishBase")
         XCTAssertEqual(c.filtered(query: "ふたつめ").map(\.id), ["y"])
     }
+
+    func testAdviceFromData() {
+        var e = FishEntry(id: "ainame", name: "アイナメ", groups: ["根魚"], maxLengthCm: 57, seasonMonths: [11, 12, 1, 2, 3], spawningMonths: [10, 11, 12], waters: ["Marine"],
+                          distributionJa: "北海道から九州の沿岸。朝鮮半島にも。", ecology: "昼行性で、岩礁帯やテトラポッド、防波堤などの陰につき、小魚や甲殻類、多毛類などを捕食する。")
+        e.depthMinM = 4; e.depthMaxM = 155; e.commonLengthCm = 30
+        let out = FishAdvice.make(e, month: 12, ownCount: 2, ownMaxCm: 41)
+        XCTAssertTrue(out.advice.first?.contains("11〜3月") == true, out.advice.first ?? "")
+        XCTAssertTrue(out.advice.first?.contains("旬") == true)
+        XCTAssertTrue(out.places.contains("堤防・漁港"))
+        XCTAssertTrue(out.places.contains("岩礁帯・根周り"))
+        XCTAssertTrue(out.places.contains("水深 4〜155 m"))
+        XCTAssertTrue(out.advice.contains { $0.contains("ルアー") || $0.contains("エビ") || $0.contains("イソメ") })
+        XCTAssertTrue(out.advice.contains { $0.contains("57 cm") && $0.contains("30 cm") && $0.contains("41 cm") })
+        XCTAssertEqual(out.distribution, "北海道から九州の沿岸")
+        XCTAssertEqual(FishAdvice.monthList([12, 1, 2]), "12〜2月")
+        XCTAssertEqual(FishAdvice.monthList([3, 5, 6]), "3月・5〜6月")
+    }
+
+    func testByteIndexSearchMatchesStringSearch() {
+        var entries: [FishEntry] = []
+        for i in 0..<3000 { entries.append(FishEntry(id: "s\(i)", name: "テスト\(i)", scientificName: "Genus species\(i)", distributionJa: i % 7 == 0 ? "北海道南部" : "九州")) }
+        let c = FishCatalog(entries: entries)
+        let t0 = Date()
+        let hits = c.filtered(query: "北海道")
+        XCTAssertEqual(hits.count, 3000 / 7 + 1)
+        XCTAssertLessThan(Date().timeIntervalSince(t0), 0.5)
+        let expected = (0..<3000).filter { "genus species\($0)".contains("species12") && $0 % 7 == 0 }.count
+        XCTAssertEqual(c.filtered(query: "species12 北海道").count, expected)   // 語は AND、学名も対象
+    }
 }

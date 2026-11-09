@@ -21,11 +21,29 @@ public struct ThemeSpec: Codable, Hashable, Sendable {
     /// 配色の上書き。キーは background / surface / surfaceRaised / accent / secondary / sun / daylight / textPrimary / textSecondary / textTertiary / faded / sea / moon / saturday / holiday / panel / scrim。値は "#RRGGBB" か "#RRGGBBAA"
     public var colors: [String: String]?
     public var home: HomeLayout?
+    public var style: Style?
 
     public init(version: Int = 1, label: String, base: String? = nil, fallbackFolder: String? = nil, light: Bool? = nil, fonts: Fonts? = nil,
                 colors: [String: String]? = nil, home: HomeLayout? = nil) {
         self.version = version; self.label = label; self.base = base; self.fallbackFolder = fallbackFolder; self.light = light
         self.fonts = fonts; self.colors = colors; self.home = home
+    }
+
+    /// 標準レイアウトの部品の見た目（チップの傾き・ガラス・飾り・撮影ボタンの印）
+    public struct Style: Codable, Hashable, Sendable {
+        /// チップを時計回りに傾ける角度（度。負で反時計回り）
+        public var chipTilt: Double?
+        /// チップを縦軸まわりに回す角度（度。奥行きのある見え方）
+        public var chipPerspective: Double?
+        /// チップと予報のカードをガラス（すりガラス＋薄い白い枠）にする
+        public var glass: Bool?
+        /// チップの角に置く飾りの文字（例 "✦"）
+        public var chipOrnament: String?
+        /// 撮影ボタンの SF Symbols 名（例 "moon.fill"）。省略は camera.fill
+        public var captureSymbol: String?
+        public init(chipTilt: Double? = nil, chipPerspective: Double? = nil, glass: Bool? = nil, chipOrnament: String? = nil, captureSymbol: String? = nil) {
+            self.chipTilt = chipTilt; self.chipPerspective = chipPerspective; self.glass = glass; self.chipOrnament = chipOrnament; self.captureSymbol = captureSymbol
+        }
     }
 
     public struct Fonts: Codable, Hashable, Sendable {
@@ -35,7 +53,7 @@ public struct ThemeSpec: Codable, Hashable, Sendable {
         public init(text: String? = nil, number: String? = nil) { self.text = text; self.number = number }
     }
 
-    enum CodingKeys: String, CodingKey { case version, label, base, fallbackFolder, light, fonts, colors, home }
+    enum CodingKeys: String, CodingKey { case version, label, base, fallbackFolder, light, fonts, colors, home, style }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -47,6 +65,7 @@ public struct ThemeSpec: Codable, Hashable, Sendable {
         fonts = try c.decodeIfPresent(Fonts.self, forKey: .fonts)
         colors = try c.decodeIfPresent([String: String].self, forKey: .colors)
         home = try c.decodeIfPresent(HomeLayout.self, forKey: .home)
+        style = try c.decodeIfPresent(Style.self, forKey: .style)
     }
 
     public static func parse(_ data: Data) throws -> ThemeSpec {
