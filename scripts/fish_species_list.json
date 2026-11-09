@@ -1,0 +1,6 @@
+[
+ {"id":"ainame","name":"アイナメ","aliases":["アブラコ","アブラメ"],"groups":["根魚","北海道"]},
+ {"id":"kurosoi","name":"クロソイ","aliases":["ソイ"],"groups":["根魚","北海道"]},
+ {"id":"mazoi","name":"キツネメバル","aliases":["マゾイ"],"groups":["根魚","北海道"]},
+ {"id":"shimazoi","name":"シマゾイ","groups":["根魚","北海道"]}
+]
