@@ -160,7 +160,8 @@ struct TabIconsRow: View {
                 } else {
                     Circle().fill(DS.Color.accent).frame(width: compact ? 46 : 56, height: compact ? 46 : 56)
                         .shadow(color: DS.Color.accent.opacity(0.55), radius: 12)
-                    Image(systemName: "camera.fill")
+                    // テーマの style.captureSymbol（紫のテーマは月）。省略はカメラ
+                    Image(systemName: ThemeStore.shared.theme.spec?.style?.captureSymbol ?? "camera.fill")
                         .font(.system(size: compact ? 18 : 22, weight: .bold))
                         .foregroundStyle(.white)
                 }

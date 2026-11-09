@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "label": "フェルン（月夜の桜）",
+  "base": "dark",
+  "fonts": { "text": "default", "number": "serif" },
+  "colors": {
+    "background": "#0B0810",
+    "surface": "#171022",
+    "surfaceRaised": "#241A33",
+    "accent": "#C9A6F2",
+    "secondary": "#E6CCFF",
+    "sun": "#E3C4FF",
+    "daylight": "#B9A2DC",
+    "sea": "#B48CF0",
+    "moon": "#E6D4FF",
+    "textPrimary": "#F3ECFA",
+    "textSecondary": "#C6B8D6",
+    "textTertiary": "#8F82A3",
+    "faded": "#4A3F5C",
+    "panel": "#2A1F3A80",
+    "scrim": "#0B081033"
+  },
+  "style": {
+    "chipTilt": -4,
+    "chipPerspective": 16,
+    "glass": true,
+    "chipOrnament": "✦",
+    "captureSymbol": "moon.fill"
+  }
+}
