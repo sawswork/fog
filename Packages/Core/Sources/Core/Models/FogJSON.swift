@@ -36,19 +36,25 @@ public enum FogJSON {
 
     // MARK: 日付
 
-    public static func format(_ date: Date) -> String {
+    // フォーマッタは作るのが重い（1 個 約 1 ms）。日付ごとに作っていたため、予報キャッシュ（数千の日付）の保存・読み込みや
+    // 釣行の復号で数秒固まっていた（2026-11-09 診断ログ）。ISO8601DateFormatter はスレッド安全なので 1 個を使い回す
+    private static let fractionFormatter: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         f.timeZone = TimeZone(identifier: "UTC")
-        return f.string(from: date)
-    }
+        return f
+    }()
+    private static let plainFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f
+    }()
+
+    public static func format(_ date: Date) -> String { fractionFormatter.string(from: date) }
 
     public static func parse(_ string: String) -> Date? {
-        let withFraction = ISO8601DateFormatter()
-        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = withFraction.date(from: string) { return d }
-        let plain = ISO8601DateFormatter()
-        plain.formatOptions = [.withInternetDateTime]
-        return plain.date(from: string)
+        if let d = fractionFormatter.date(from: string) { return d }
+        return plainFormatter.date(from: string)
     }
 }

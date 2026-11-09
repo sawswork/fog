@@ -55,17 +55,28 @@ public struct PressureSample: Codable, Hashable, Sendable {
 /// 時系列から指定時刻に最も近い（または線形補間した）値を引く。
 public enum Series {
     /// 指定時刻を挟む2点で線形補間。範囲外は端の値（maxGap 以内のときだけ）。
+    /// 予報キャッシュの並びは時刻順なので、並んでいれば二分探索（毎回の並べ替えをやめた。1 スナップショットで 14 回呼ばれる）
     public static func interpolate(_ samples: [(Date, Double)], at date: Date, maxGap: TimeInterval = 3 * 3600) -> Double? {
-        let sorted = samples.sorted { $0.0 < $1.0 }
-        guard !sorted.isEmpty else { return nil }
-        if let exact = sorted.first(where: { $0.0 == date }) { return exact.1 }
-        guard let after = sorted.first(where: { $0.0 > date }) else {
+        guard !samples.isEmpty else { return nil }
+        var isSorted = true
+        for i in 1..<samples.count where samples[i - 1].0 > samples[i].0 { isSorted = false; break }
+        let sorted = isSorted ? samples : samples.sorted { $0.0 < $1.0 }
+        // 最初に date 以上になる位置
+        var lo = 0, hi = sorted.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if sorted[mid].0 < date { lo = mid + 1 } else { hi = mid }
+        }
+        if lo < sorted.count, sorted[lo].0 == date { return sorted[lo].1 }
+        guard lo < sorted.count else {
             let last = sorted[sorted.count - 1]
             return date.timeIntervalSince(last.0) <= maxGap ? last.1 : nil
         }
-        guard let before = sorted.last(where: { $0.0 < date }) else {
+        let after = sorted[lo]
+        guard lo > 0 else {
             return after.0.timeIntervalSince(date) <= maxGap ? after.1 : nil
         }
+        let before = sorted[lo - 1]
         let span = after.0.timeIntervalSince(before.0)
         guard span <= 2 * maxGap, span > 0 else { return nil }
         let t = date.timeIntervalSince(before.0) / span

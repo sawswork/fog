@@ -51,10 +51,7 @@ public enum FeedParser {
     static func date(from text: String) -> Date? {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return nil }
-        let iso = ISO8601DateFormatter()
-        if let d = iso.date(from: t) { return d }
-        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = iso.date(from: t) { return d }
+        if let d = FogJSON.parse(t) { return d }
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX")
         for fmt in ["EEE, dd MMM yyyy HH:mm:ss Z", "EEE, dd MMM yyyy HH:mm:ss zzz", "dd MMM yyyy HH:mm:ss Z", "EEE, dd MMM yyyy HH:mm Z", "yyyy-MM-dd HH:mm:ss"] {
             f.dateFormat = fmt
