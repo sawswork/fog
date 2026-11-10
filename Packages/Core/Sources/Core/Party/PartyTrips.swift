@@ -74,7 +74,7 @@ public enum PartyTrips {
         let aEnd = a.end(now: now), bEnd = b.end(now: now)
         guard a.startedAt.addingTimeInterval(-timeSlack) <= bEnd, b.startedAt.addingTimeInterval(-timeSlack) <= aEnd else { return false }
         if a.coordinate.isPlausible, b.coordinate.isPlausible {
-            return TideCatalog.distanceMeters(a.coordinate, b.coordinate) <= maxDistanceM
+            return Geo.distanceMeters(a.coordinate, b.coordinate) <= maxDistanceM
         }
         return !a.spotName.isEmpty && a.spotName == b.spotName
     }
