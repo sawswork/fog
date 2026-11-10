@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "label": "ラム（雨夜の提灯）",
+  "base": "dark",
+  "fonts": { "text": "default", "number": "serif" },
+  "colors": {
+    "background": "#12060B",
+    "surface": "#1E0C14",
+    "surfaceRaised": "#3A1626",
+    "accent": "#FF5C8A",
+    "secondary": "#C2386A",
+    "sun": "#FFD27A",
+    "daylight": "#FF9A6B",
+    "sea": "#FF9DBB",
+    "moon": "#F2B8D0",
+    "textPrimary": "#FFF2F6",
+    "textSecondary": "#E8C6D2",
+    "textTertiary": "#B08898",
+    "faded": "#6A4050",
+    "saturday": "#8FC5FF",
+    "holiday": "#FF6E7D",
+    "panel": "#12060B3F",
+    "scrim": "#0E05091F"
+  },
+  "style": {
+    "glass": true,
+    "glassOpacity": 1,
+    "glassBlur": false,
+    "chipOrnament": "✦",
+    "borderColor": "#FFB3C878",
+    "borderWidth": 1,
+    "captureFill": "#4A1028",
+    "glowColor": "#12060B"
+  }
+}
