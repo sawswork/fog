@@ -2,7 +2,7 @@ import SwiftUI
 import Core
 
 /// 新しい 1 画面「海図」（F-63）。着いたら開始、釣れたら撮影、帰るとき終了。その間は港の図が風と見立てを映し続ける。
-/// ログ・図鑑・地図・設定などは右上のメニューから開く。見た目はテーマに従わない
+/// ログ・図鑑・地図・設定などは右上のメニューから開く。テーマ「海図」を選んだときの画面（`AppTheme.isChart`）
 struct ChartHomeView: View {
     @Environment(AppServices.self) private var services
     /// 撮影画面を開く（ウィジェットや通知からの撮影もここに来る）

@@ -21,7 +21,7 @@ struct SettingsView: View {
                 row("自動検出", system: "location", trailing: SessionDetectionService.autoDetectionEnabled ? SessionDetectionService.sensitivity.label : "オフ") { DetectionSettingsView() }
                 row("地図レイヤー", system: "square.3.layers.3d", trailing: "\(MapLayerSettings.enabled.count)/\(MapLayer.allCases.count)") { MapLayerSettingsView() }
                 row("情報源", system: "info.circle", trailing: "") { SourcesSettingsView() }
-                row("画面とテーマ", system: "paintpalette", trailing: ((UserDefaults.standard.object(forKey: ChartStyle.modeKey) as? Bool) ?? true) ? "海図" : ThemeStore.shared.theme.label) { ThemeSettingsView() }
+                row("テーマ", system: "paintpalette", trailing: ThemeStore.shared.theme.label) { ThemeSettingsView() }
                 row("診断", system: "waveform.path.ecg", trailing: "") { DiagnosticsView() }
             }
             .listStyle(.plain)
@@ -841,8 +841,6 @@ struct SourcesSettingsView: View {
 
 struct ThemeSettingsView: View {
     @State private var theme: AppTheme = ThemeStore.shared.theme
-    /// 海図の 1 画面（F-63）。オンの間はテーマに関係なく同じ見た目
-    @AppStorage(ChartStyle.modeKey) private var chartMode = true
     /// 同梱している画像の一覧（開発用）。ふだんは畳んでおく
     @State private var showFiles = false
 
@@ -851,17 +849,6 @@ struct ThemeSettingsView: View {
     var body: some View {
         SettingsPage(title: "テーマ") {
             List {
-                Section {
-                    Toggle(isOn: $chartMode) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("海図の 1 画面").font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
-                            Text("開始・撮影・終了と港の図だけの画面。オフにすると、これまでのタブと下のテーマに戻ります")
-                                .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
-                        }
-                    }
-                    .tint(DS.Color.accent)
-                    .settingsRow()
-                } header: { SectionLabel(text: "画面") }
                 // テーマは絵つきのカードで選ぶ。以前の横並びの切替は 8 個で名前が「フリ…」「ちい…」と切れて読めなかった（2026-11-10 開発者の指摘）
                 Section {
                     LazyVGrid(columns: columns, spacing: DS.Spacing.s) {
@@ -876,7 +863,7 @@ struct ThemeSettingsView: View {
                     .listRowInsets(EdgeInsets(top: DS.Spacing.s, leading: DS.Spacing.m, bottom: DS.Spacing.s, trailing: DS.Spacing.m))
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
-                    Text("タップすると全画面に反映されます")
+                    Text(theme.isChart ? "「海図」は、開始・撮影・終了と港の図だけの 1 画面です。ほかのテーマを選ぶと、5 つの画面とタブに戻ります" : "タップすると全画面に反映されます")
                         .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
                         .listRowBackground(Color.clear).listRowSeparator(.hidden)
                 } header: { SectionLabel(text: "見た目：\(theme.label)") }
@@ -993,8 +980,11 @@ private struct ThemeThumbnail: View {
         var found: URL?
         search: for dir in dirs {
             for ext in ["jpg", "png", "jpeg", "JPG", "PNG"] {
-                let url = dir.appendingPathComponent("bg_home.\(ext)")
-                if FileManager.default.fileExists(atPath: url.path) { found = url; break search }
+                // カード用の絵（thumb）があればそれ、無ければホームの背景
+                for name in ["thumb", "bg_home"] {
+                    let url = dir.appendingPathComponent("\(name).\(ext)")
+                    if FileManager.default.fileExists(atPath: url.path) { found = url; break search }
+                }
             }
         }
         guard let url = found else { return }

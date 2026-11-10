@@ -22,6 +22,10 @@ public struct ThemeSpec: Codable, Hashable, Sendable {
     public var colors: [String: String]?
     public var home: HomeLayout?
     public var style: Style?
+    /// 画面の構成：省略か "tabs" はこれまでの 5 画面とタブ、"chart" は海図の 1 画面（F-63）
+    public var screen: String?
+    /// 海図の 1 画面のテーマか
+    public var isChartScreen: Bool { screen == "chart" }
 
     public init(version: Int = 1, label: String, base: String? = nil, fallbackFolder: String? = nil, light: Bool? = nil, fonts: Fonts? = nil,
                 colors: [String: String]? = nil, home: HomeLayout? = nil) {
@@ -73,7 +77,7 @@ public struct ThemeSpec: Codable, Hashable, Sendable {
         public init(text: String? = nil, number: String? = nil) { self.text = text; self.number = number }
     }
 
-    enum CodingKeys: String, CodingKey { case version, label, base, fallbackFolder, light, fonts, colors, home, style }
+    enum CodingKeys: String, CodingKey { case version, label, base, fallbackFolder, light, fonts, colors, home, style, screen }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -86,6 +90,7 @@ public struct ThemeSpec: Codable, Hashable, Sendable {
         colors = try c.decodeIfPresent([String: String].self, forKey: .colors)
         home = try c.decodeIfPresent(HomeLayout.self, forKey: .home)
         style = try c.decodeIfPresent(Style.self, forKey: .style)
+        screen = try c.decodeIfPresent(String.self, forKey: .screen)
     }
 
     public static func parse(_ data: Data) throws -> ThemeSpec {
