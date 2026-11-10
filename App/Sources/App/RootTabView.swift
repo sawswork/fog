@@ -7,29 +7,36 @@ struct RootTabView: View {
     enum Tab: Hashable { case home, log, capture, guide, spots }
     @State private var selected: Tab = .home
     @Environment(AppServices.self) private var services
+    /// 海図の 1 画面（F-63、既定）。オフにするとこれまでのタブとテーマ（設定 > テーマ）
+    @AppStorage(ChartStyle.modeKey) private var chartMode = true
+    @State private var chartCamera = false
 
     /// テーマの配置がタブバーを消しているか（F-58）。画面の行き来はホームの部品（nav / button）と、他の画面の右下のホームボタン
     private var hidesTabBar: Bool { ThemeStore.shared.theme.home?.hidesTabBar == true }
 
     var body: some View {
         Group {
-            switch selected {
-            case .home: HomeView()
-            case .log: LogView()
-            case .capture: CaptureView()
-            case .guide: GuideView()
-            case .spots: SpotsView()
+            if chartMode {
+                ChartHomeView(cameraOpen: $chartCamera)
+            } else {
+                switch selected {
+                case .home: HomeView()
+                case .log: LogView()
+                case .capture: CaptureView()
+                case .guide: GuideView()
+                case .spots: SpotsView()
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(screenBackground)
+        .background { if chartMode { ChartStyle.bg.ignoresSafeArea() } else { screenBackground } }
         .environment(\.captureTab, { selected = .capture })
         .environment(\.switchTab, { selected = $0 })
         // タブバーは下のセーフエリアとして置く。各画面はタブバーを除いた高さを 100% として使える
-        .safeAreaInset(edge: .bottom, spacing: 0) { if !hidesTabBar { tabBar } }
+        .safeAreaInset(edge: .bottom, spacing: 0) { if !hidesTabBar && !chartMode { tabBar } }
         // タブバーが無いテーマ：ホーム以外の画面では右下にホームへ戻るボタン
         .overlay(alignment: .bottomTrailing) {
-            if hidesTabBar, selected != .home {
+            if hidesTabBar, selected != .home, !chartMode {
                 Button { selected = .home } label: {
                     Image(systemName: "house.fill").font(.system(size: 18, weight: .semibold)).foregroundStyle(DS.Color.textPrimary)
                         .frame(width: 48, height: 48).background(DS.Color.panel.opacity(0.95), in: Circle())
@@ -43,7 +50,7 @@ struct RootTabView: View {
         .onChange(of: services.router.pending) { _, link in
             guard let link else { return }
             switch link {
-            case .capture: selected = .capture
+            case .capture: if chartMode { chartCamera = true } else { selected = .capture }
             case .home: selected = .home
             case .toggleTackle: services.capture.currentTackle = (services.capture.currentTackle ?? .spinning) == .spinning ? .bait : .spinning
             case .hookLost: services.hookRecorder.record(.lost)
@@ -51,7 +58,10 @@ struct RootTabView: View {
             services.router.pending = nil
         }
         .onAppear {
-            if services.router.pending == .capture { selected = .capture; services.router.pending = nil }
+            if services.router.pending == .capture {
+                if chartMode { chartCamera = true } else { selected = .capture }
+                services.router.pending = nil
+            }
         }
         // テーマ切替（F-49）で全画面を作り直す
         .id(ThemeStore.shared.theme)

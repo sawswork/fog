@@ -34,8 +34,17 @@ targets:
         excludes:
           - "Themes/**"
           - "Fish/**"
+          - "Charts/**"
+          - "ChartUI/**"
       # テーマ画像（F-49）。フォルダ参照としてそのままバンドルに入る（Themes/<theme>/<name>.png）
       - path: App/Resources/Themes
+        type: folder
+        buildPhase: resources
+      # 港の海図（F-63）。Charts/<id>.jpg と、海図の画面のボタン・背景（ChartUI/）
+      - path: App/Resources/Charts
+        type: folder
+        buildPhase: resources
+      - path: App/Resources/ChartUI
         type: folder
         buildPhase: resources
       # 図鑑の魚の画像（F-60）。数千枚になるのでフォルダ参照（Fish/<id>.jpg）

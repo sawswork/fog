@@ -21,7 +21,7 @@ struct SettingsView: View {
                 row("自動検出", system: "location", trailing: SessionDetectionService.autoDetectionEnabled ? SessionDetectionService.sensitivity.label : "オフ") { DetectionSettingsView() }
                 row("地図レイヤー", system: "square.3.layers.3d", trailing: "\(MapLayerSettings.enabled.count)/\(MapLayer.allCases.count)") { MapLayerSettingsView() }
                 row("情報源", system: "info.circle", trailing: "") { SourcesSettingsView() }
-                row("テーマ", system: "paintpalette", trailing: ThemeStore.shared.theme.label) { ThemeSettingsView() }
+                row("画面とテーマ", system: "paintpalette", trailing: ((UserDefaults.standard.object(forKey: ChartStyle.modeKey) as? Bool) ?? true) ? "海図" : ThemeStore.shared.theme.label) { ThemeSettingsView() }
                 row("診断", system: "waveform.path.ecg", trailing: "") { DiagnosticsView() }
             }
             .listStyle(.plain)
@@ -775,6 +775,17 @@ struct SourcesSettingsView: View {
                         .settingsRow()
                     }
                     Text("潮汐: 気象庁 潮位表（分潮）").font(DS.Font.label).foregroundStyle(DS.Color.textPrimary).settingsRow()
+                    // 港の海図（F-63）：国土地理院の航空写真と地図をもとに描いた絵
+                    Link(destination: URL(string: "https://maps.gsi.go.jp/development/ichiran.html")!) {
+                        HStack {
+                            Text("港の海図: 国土地理院の地理院タイル（航空写真・淡色地図）を加工して作成").font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
+                            Spacer()
+                            Image(systemName: "arrow.up.right").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+                        }
+                    }
+                    .settingsRow()
+                    Text("海図の「投げる場所の見立て」は、岸の形・風・潮の動き・これまでの釣果の位置から決めた期待度です。実測の水深や潮の流れではありません")
+                        .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary).settingsRow()
                     Link(destination: URL(string: "https://nlftp.mlit.go.jp/ksj/")!) {
                         HStack {
                             Text("漁港・港湾: 国土数値情報（国土交通省）").font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
@@ -830,6 +841,8 @@ struct SourcesSettingsView: View {
 
 struct ThemeSettingsView: View {
     @State private var theme: AppTheme = ThemeStore.shared.theme
+    /// 海図の 1 画面（F-63）。オンの間はテーマに関係なく同じ見た目
+    @AppStorage(ChartStyle.modeKey) private var chartMode = true
     /// 同梱している画像の一覧（開発用）。ふだんは畳んでおく
     @State private var showFiles = false
 
@@ -838,6 +851,17 @@ struct ThemeSettingsView: View {
     var body: some View {
         SettingsPage(title: "テーマ") {
             List {
+                Section {
+                    Toggle(isOn: $chartMode) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("海図の 1 画面").font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
+                            Text("開始・撮影・終了と港の図だけの画面。オフにすると、これまでのタブと下のテーマに戻ります")
+                                .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+                        }
+                    }
+                    .tint(DS.Color.accent)
+                    .settingsRow()
+                } header: { SectionLabel(text: "画面") }
                 // テーマは絵つきのカードで選ぶ。以前の横並びの切替は 8 個で名前が「フリ…」「ちい…」と切れて読めなかった（2026-11-10 開発者の指摘）
                 Section {
                     LazyVGrid(columns: columns, spacing: DS.Spacing.s) {
