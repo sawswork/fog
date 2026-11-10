@@ -99,7 +99,7 @@ struct SpotDetailView: View {
                 ForecastChart(model: detailModel)
                     .frame(height: geo.size.height * 0.46)
                     .padding(.horizontal, DS.Spacing.s)
-                    .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous))
+                    .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous)).themeOutline(DS.Radius.card)
                     .padding(.horizontal, DS.Spacing.l)
                 Spacer(minLength: 0)
             }

@@ -174,7 +174,7 @@ struct FishDatabaseSection: View {
         }
         .foregroundStyle(on ? DS.Color.background : DS.Color.textPrimary)
         .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(on ? DS.Color.accent : DS.Color.panel, in: Capsule())
+        .background(on ? DS.Color.accent : DS.Color.panel, in: Capsule()).themeOutline(999)
     }
 }
 
@@ -202,7 +202,7 @@ struct FishCard: View {
         }
         .padding(6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: 16, style: .continuous)).themeOutline(16)
     }
 }
 
@@ -456,7 +456,7 @@ struct FishDetailView: View {
         }
         .padding(DS.Spacing.m)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
+        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous)).themeOutline(DS.Radius.chip)
     }
 
     private func stat(_ label: String, _ value: String, unit: String) -> some View {
@@ -469,7 +469,7 @@ struct FishDetailView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, DS.Spacing.s)
-        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
+        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous)).themeOutline(DS.Radius.chip)
     }
 
     private func reload() {

@@ -36,7 +36,7 @@ struct AssistantView: View {
                                 Text(m.text).font(DS.Font.label)
                                     .foregroundStyle(m.role == .user ? DS.Color.background : DS.Color.textPrimary)
                                     .padding(DS.Spacing.m)
-                                    .background(m.role == .user ? DS.Color.accent : DS.Color.surface, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
+                                    .background(m.role == .user ? DS.Color.accent : DS.Color.surface, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous)).themeOutline(DS.Radius.chip)
                                 if m.role == .assistant { Spacer(minLength: 40) }
                             }
                             .id(m.id)
@@ -59,7 +59,7 @@ struct AssistantView: View {
                 TextField("質問、または記録したい話", text: $input, axis: .vertical)
                     .lineLimit(1...4)
                     .font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
-                    .padding(DS.Spacing.m).background(DS.Color.surface, in: RoundedRectangle(cornerRadius: DS.Radius.chip))
+                    .padding(DS.Spacing.m).background(DS.Color.surface, in: RoundedRectangle(cornerRadius: DS.Radius.chip)).themeOutline(DS.Radius.chip)
                     .onSubmit { submit(input) }
                 Button { toggleRecording() } label: {
                     Image(systemName: recorder.isRecording ? "stop.circle.fill" : "mic.circle.fill").font(.system(size: 34))

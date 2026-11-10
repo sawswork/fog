@@ -125,7 +125,7 @@ struct GuideView: View {
                 }
             }
             .padding(.horizontal, DS.Spacing.m).padding(.vertical, 8)
-            .background(DS.Color.panel, in: Capsule())
+            .background(DS.Color.panel, in: Capsule()).themeOutline(999)
         }
         .padding(.top, DS.Spacing.s)
     }
@@ -138,7 +138,7 @@ struct GuideView: View {
         }
         .foregroundStyle(DS.Color.textSecondary)
         .padding(.horizontal, 10).padding(.vertical, 5)
-        .background(DS.Color.panel, in: Capsule())
+        .background(DS.Color.panel, in: Capsule()).themeOutline(999)
     }
 
     private func reload() {
@@ -181,7 +181,7 @@ struct GuideTile: View {
         }
         .padding(6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: 16, style: .continuous)).themeOutline(16)
     }
 }
 
@@ -292,7 +292,7 @@ struct SpeciesDetailView: View {
         }
         .padding(DS.Spacing.m)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
+        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous)).themeOutline(DS.Radius.chip)
     }
 
     /// 計測した釣果が全部同じ日か（軸の表記を時刻にする）
@@ -350,7 +350,7 @@ struct SpeciesDetailView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, DS.Spacing.s)
-        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
+        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous)).themeOutline(DS.Radius.chip)
     }
 
     /// 小さな分布バー（横並び）
@@ -413,7 +413,7 @@ struct CatchEditSheet: View {
             HStack {
                 TextField("全長 cm", text: $lengthText).keyboardType(.decimalPad)
                     .font(DS.Font.number(20)).foregroundStyle(DS.Color.textPrimary)
-                    .padding(DS.Spacing.m).background(DS.Color.surface, in: RoundedRectangle(cornerRadius: DS.Radius.chip))
+                    .padding(DS.Spacing.m).background(DS.Color.surface, in: RoundedRectangle(cornerRadius: DS.Radius.chip)).themeOutline(DS.Radius.chip)
                 Text("cm").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
             }
             // タックルとリグ（シンカー・フック・ワーム）を後から設定する

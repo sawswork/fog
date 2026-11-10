@@ -113,7 +113,7 @@ struct LogView: View {
             }
         }
         .padding(3)
-        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: 14, style: .continuous)).themeOutline(14)
     }
 
     /// 最新レポートの 1 行（確定画像：グレーの文章。枠なし）
@@ -206,7 +206,7 @@ struct LogView: View {
             .padding(DS.Spacing.m)
             .frame(width: 165)
             .frame(maxHeight: .infinity, alignment: .top)
-            .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous))
+            .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous)).themeOutline(DS.Radius.card)
         }
         .buttonStyle(.plain)
     }
@@ -238,5 +238,6 @@ struct SessionCardView: View {
             .padding(DS.Spacing.m)
         }
         .clipShape(RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous))
+        .themeOutline(DS.Radius.card)
     }
 }

@@ -27,7 +27,7 @@
 | `fonts.text` / `fonts.number` | `default` / `serif` / `rounded` / `monospaced` |
 | `colors` | 上書きする色。キー：`background` `surface` `surfaceRaised` `accent` `secondary` `sun` `daylight` `textPrimary` `textSecondary` `textTertiary` `faded` `sea` `moon` `saturday` `holiday` `panel` `scrim`。値は `#RRGGBB` か `#RRGGBBAA` |
 | `home` | ホームの配置（無ければ従来の縦積み＋タブバー） |
-| `style` | **標準レイアウトの部品の見た目**（2026-11-09 追加）：`chipTilt`（チップの面内の傾き、度）、`chipPerspective`（縦軸まわりの回転、度。奥行き）、`glass`（チップと予報カードをすりガラス＋薄い白い枠に）、`glassOpacity`（その上の面の濃さ 0〜1、省略 0.35。小さいほど背景が透ける）、`glassBlur`（すりガラスのぼかしを使うか。false なら薄い色の面だけで背景がそのまま透ける。省略 true）、`chipOrnament`（チップの角の飾り文字、例 "✦"）、`captureSymbol`（撮影ボタンの SF Symbols 名、例 "moon.fill"）。`App/Resources/Themes/fern/` が例 |
+| `style` | **標準レイアウトの部品の見た目**（2026-11-09 追加）：`chipTilt`（チップの面内の傾き、度）、`chipPerspective`（縦軸まわりの回転、度。奥行き）、`glass`（チップと予報カードをすりガラス＋薄い白い枠に）、`glassOpacity`（その上の面の濃さ 0〜1、省略 0.35。小さいほど背景が透ける）、`glassBlur`（すりガラスのぼかしを使うか。false なら薄い色の面だけで背景がそのまま透ける。省略 true）、`chipOrnament`（チップの角の飾り文字、例 "✦"）、`captureSymbol`（撮影ボタンの SF Symbols 名、例 "moon.fill"）。`App/Resources/Themes/fern/` が例。**2026-11-10 追加**：`borderColor`（面の輪郭線の色 `#RRGGBB` / `#RRGGBBAA`。チップ・予報カードと、ログ・図鑑・地図などのカードに共通で付く。省略は輪郭なし）、`borderWidth`（輪郭線の太さ pt、省略 1.5、0.5〜4）、`captureFill`（`tab_camera` があるテーマの撮影ボタンの丸の色）、`glowColor`（釣れ率の円の後ろの光の色。暗い色にすると明るい背景でも数字が読める）。`App/Resources/Themes/chiikawa/` が例 |
 
 組み込みのフォルダ（`grimoire` など）に `theme.json` を置くと、その組み込みテーマの上書きになる。
 
