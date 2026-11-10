@@ -7,7 +7,11 @@ import Core
 struct SessionDetailView: View {
     let session: Core.Session
     let spotName: String
+    /// いっしょに行った人と、その人の端末で記録した釣果（F-62。ログが時間と場所から決める）
+    var companions: [String] = []
+    var friendCatches: [SharedCatch] = []
     @Environment(AppServices.self) private var services
+    @State private var viewingShared: SharedCatch?
     @State private var deleting: Catch?
     @State private var removedIDs: Set<UUID> = []
     /// 答え合わせ（F-29）：釣行の時間範囲の釣れ率の推移と評価
@@ -30,6 +34,14 @@ struct SessionDetailView: View {
                     }
                 }
                 panel("釣果 \(session.catches.count)尾 · タップで写真、長押しで削除") { catches }
+                if !friendCatches.isEmpty {
+                    panel("仲間の釣果 \(friendCatches.count)尾 · タップで写真") {
+                        ForEach(friendCatches) { c in
+                            Button { viewingShared = c } label: { SharedCatchRow(item: c, thumbnail: services.party.thumbnail(for: c.id)) }
+                                .buttonStyle(.plain)
+                        }
+                    }
+                }
                 panel("答え合わせ · 釣れ率の推移と釣れた瞬間（白い点）") { reviewChart }
                 panel("潮位と釣れた時刻") { timeline }
                 if session.pressureLog?.count ?? 0 >= 2 { panel("現場の気圧（端末の気圧計）") { pressure } }
@@ -43,6 +55,10 @@ struct SessionDetailView: View {
         .task { computeReview() }
         .fullScreenCover(isPresented: $showMap) { SessionMapSheet(session: session, spotName: spotName) }
         .fullScreenCover(item: $viewing) { c in PhotoViewer(catchItem: c) }
+        .fullScreenCover(item: $viewingShared) { s in
+            PhotoViewer(catchItem: Catch(id: s.id, sessionID: s.id, at: s.at, coordinate: s.coordinate, species: s.species, speciesConfidence: 1, lengthCm: s.lengthCm, angler: s.angler),
+                        fallback: services.party.thumbnail(for: s.id), sharedID: s.id)
+        }
     }
 
     /// 釣り場名、日付と時間帯、数字（尾数・最大・時間・針ロスト）
@@ -54,6 +70,16 @@ struct SessionDetailView: View {
             Text(spotName).font(DS.Font.number(24)).foregroundStyle(DS.Color.textPrimary)
             Text("\(JPFormat.ymdw(session.startedAt)) \(JPFormat.hm(session.startedAt))〜\(session.endedAt == nil ? "記録中" : JPFormat.hm(end)) · \(JPFormat.duration(end.timeIntervalSince(session.startedAt)))")
                 .font(DS.Font.label).foregroundStyle(DS.Color.textSecondary)
+            // いっしょに行った人（F-62）
+            if !companions.isEmpty {
+                HStack(spacing: DS.Spacing.xs) {
+                    Image(systemName: "person.2.fill").font(.system(size: 11, weight: .semibold)).foregroundStyle(DS.Color.textTertiary)
+                    ForEach(companions, id: \.self) { name in
+                        Text(name).font(.system(size: 11, weight: .semibold)).foregroundStyle(DS.Color.background)
+                            .padding(.horizontal, 7).padding(.vertical, 3).background(DS.Color.sun, in: Capsule())
+                    }
+                }
+            }
             HStack(spacing: DS.Spacing.s) {
                 stat("尾数", session.isBlank ? "ボウズ" : "\(session.catches.count)", unit: session.isBlank ? "" : "尾", highlight: !session.isBlank)
                 stat("最大", maxLen.map { "\(Int($0.rounded()))" } ?? "—", unit: "cm")

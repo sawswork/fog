@@ -8,6 +8,8 @@ struct LogView: View {
     @Environment(AppServices.self) private var services
     private var model: LogViewModel { services.logModel }
     @State private var detail: Core.Session?
+    /// 仲間の釣行の詳細（F-62）
+    @State private var friendDetail: LogViewModel.FriendTripCard?
     @State private var analysis: AnalysisKind?
     @State private var reportSession: Core.Session?
     @State private var deleting: Core.Session?
@@ -37,7 +39,14 @@ struct LogView: View {
         }
         .onAppear { model.attach(services) }
         .onReceive(NotificationCenter.default.publisher(for: .fogStoreDidChange)) { _ in model.refresh() }
-        .sheet(item: $detail) { SessionDetailView(session: $0, spotName: model.spots[$0.spotID]?.name ?? "釣り場") }
+        // 仲間の釣行（F-62）：開いたら取りに行き、届いたら並べ直す
+        .task { await services.party.syncIfNeeded(store: services.store) }
+        .onChange(of: services.party.revision) { _, _ in model.refresh() }
+        .sheet(item: $detail) {
+            SessionDetailView(session: $0, spotName: model.spots[$0.spotID]?.name ?? "釣り場",
+                              companions: model.companions[$0.id] ?? [], friendCatches: model.companionCatches[$0.id] ?? [])
+        }
+        .sheet(item: $friendDetail) { FriendTripDetailView(card: $0) }
         .sheet(item: $analysis) { AnalysisDetailView(kind: $0, sessions: model.allSessions, spots: model.spots) }
         .sheet(item: $reportSession) { s in
             VStack(alignment: .leading, spacing: DS.Spacing.m) {
@@ -135,13 +144,21 @@ struct LogView: View {
     private var sessionCards: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: DS.Spacing.m) {
-                ForEach(model.cards) { card in
-                    SessionCardView(card: card, duration: model.durationText(card.session))
-                        .frame(width: 200)
-                        .onTapGesture { detail = card.session }
-                        .onLongPressGesture { deleting = card.session }
+                // 自分の釣行と、仲間の釣行（自分が行っていなくても出る。F-62）を新しい順に
+                ForEach(model.items) { item in
+                    switch item {
+                    case .own(let card):
+                        SessionCardView(card: card, duration: model.durationText(card.session))
+                            .frame(width: 200)
+                            .onTapGesture { detail = card.session }
+                            .onLongPressGesture { deleting = card.session }
+                    case .friend(let card):
+                        FriendTripCardView(card: card, duration: model.durationText(card.trip.duration ?? 0))
+                            .frame(width: 200)
+                            .onTapGesture { friendDetail = card }
+                    }
                 }
-                if model.cards.isEmpty {
+                if model.items.isEmpty {
                     Text("釣行はまだありません").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary).padding()
                 }
             }
@@ -219,16 +236,27 @@ struct SessionCardView: View {
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            if let data = card.thumbnail, let ui = UIImage(data: data) {
-                Image(uiImage: ui).resizable().scaledToFill()
-                    .overlay(LinearGradient(colors: [.clear, DS.Color.background.opacity(0.85)], startPoint: .center, endPoint: .bottom))
-            } else {
-                // ボウズ・写真なしはグレーの面（確定画像）
-                card.session.isBlank ? Color(red: 0.55, green: 0.55, blue: 0.57) : DS.Color.panel
+            // カードの大きさを先に決め、写真はその中に敷く（写真の縦横比でカードが広がらないように）
+            Color.clear.overlay {
+                if let data = card.thumbnail, let ui = UIImage(data: data) {
+                    Image(uiImage: ui).resizable().scaledToFill()
+                        .overlay(LinearGradient(colors: [.clear, DS.Color.background.opacity(0.85)], startPoint: .center, endPoint: .bottom))
+                } else {
+                    // ボウズ・写真なしはグレーの面（確定画像）
+                    card.session.isBlank ? Color(red: 0.55, green: 0.55, blue: 0.57) : DS.Color.panel
+                }
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(card.session.startedAt, format: .dateTime.year().month(.twoDigits).day(.twoDigits)).font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
                 Text(card.spotName).font(.system(size: 20, weight: .bold)).foregroundStyle(DS.Color.textPrimary).lineLimit(1)
+                // いっしょに行った人（F-62）
+                if !card.companions.isEmpty {
+                    HStack(spacing: 4) {
+                        Image(systemName: "person.2.fill").font(.system(size: 9, weight: .bold))
+                        Text(card.companions.joined(separator: "・")).font(.system(size: 11, weight: .semibold)).lineLimit(1)
+                    }
+                    .foregroundStyle(DS.Color.sun)
+                }
                 HStack(alignment: .firstTextBaseline, spacing: DS.Spacing.s) {
                     Text(card.session.isBlank ? "ボウズ" : "\(card.session.catches.count)").font(DS.Font.number(24))
                         .foregroundStyle(card.session.isBlank ? DS.Color.textSecondary : DS.Color.textPrimary)
