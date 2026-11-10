@@ -784,6 +784,8 @@ struct SourcesSettingsView: View {
                         }
                     }
                     .settingsRow()
+                    Text("海図の「投げる場所の見立て」は、岸の形・風・潮の動き・これまでの釣果の位置から決めた期待度です。実測の水深や潮の流れではありません")
+                        .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary).settingsRow()
                     Link(destination: URL(string: "https://nlftp.mlit.go.jp/ksj/")!) {
                         HStack {
                             Text("漁港・港湾: 国土数値情報（国土交通省）").font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)

@@ -68,6 +68,9 @@ struct ChartHomeView: View {
         }
         .sheet(isPresented: $showSpots) { SpotSwitchSheet(model: home) { showSpots = false }.presentationDetents([.large]) }
         .fullScreenCover(isPresented: $cameraOpen) { cameraCover }
+        .onChange(of: cameraOpen) { _, open in
+            if !open { Task { await reload() } }
+        }
         .alert("位置が分かりません", isPresented: $showStartFailed) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -83,6 +86,8 @@ struct ChartHomeView: View {
 
     /// 記録中に釣果が増えたら、確認のカードを出す（撮影画面から戻ったとき・標準カメラの写真の取り込み）
     private func detectNewCatch() {
+        // 撮影画面を開いている間は待つ（閉じて海図に戻ったときに出す）
+        guard !cameraOpen else { return }
         let ids = Set(vm.today.map(\.id))
         defer { knownCatchIDs = ids }
         guard home.isRecording, let known = knownCatchIDs else { return }
@@ -469,7 +474,7 @@ struct ChartHomeView: View {
     /// これまでの撮影画面をそのまま全画面で出し、左上に閉じるボタンを足す
     private var cameraCover: some View {
         ZStack(alignment: .topLeading) {
-            CaptureView()
+            CaptureView(onResultDismissed: { cameraOpen = false })
             Button { cameraOpen = false } label: {
                 Image(systemName: "xmark").font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
                     .frame(width: 44, height: 44).background(Color.black.opacity(0.45), in: Circle())

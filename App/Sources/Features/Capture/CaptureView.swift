@@ -5,6 +5,8 @@ import Core
 /// 撮影（§5）。全画面カメラ、中央の計測枠、タックル／リグのチップ、シャッター、結果シート。L10 で仕上げる。
 struct CaptureView: View {
     @Environment(AppServices.self) private var services
+    /// 結果を閉じたあとに呼ぶ（海図の 1 画面では、ここで撮影を閉じて海図に戻る）
+    var onResultDismissed: (() -> Void)? = nil
     @State private var model = CaptureViewModel()
     @State private var showRigPicker = false
     @State private var showHookMenu = false
@@ -29,7 +31,7 @@ struct CaptureView: View {
                 controls
             }
             if let result = model.result {
-                ResultSheet(outcome: result, onChoose: { model.choose(species: $0) }, onDismiss: { model.dismissResult() })
+                ResultSheet(outcome: result, onChoose: { model.choose(species: $0) }, onDismiss: { model.dismissResult(); onResultDismissed?() })
                     .transition(.move(edge: .bottom))
             }
             if let toast {
