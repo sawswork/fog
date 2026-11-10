@@ -253,7 +253,9 @@ struct HomeView: View {
     // MARK: 釣果情報（F-27）の 1 行。タップで一覧
 
     private var feedLine: some View {
-        Button { showFeed = true } label: {
+        // 輪郭線のあるテーマ（背景が明るい絵）では、面と輪郭を敷いて読めるようにする
+        let backdrop = ThemeStore.shared.theme.outlineColor != nil && ThemeStore.shared.theme.home == nil
+        return Button { showFeed = true } label: {
             HStack(spacing: DS.Spacing.xs) {
                 Image(systemName: "newspaper").font(.system(size: 10, weight: .semibold)).foregroundStyle(DS.Color.accent)
                 if let h = model.feedHeadline {
@@ -263,7 +265,11 @@ struct HomeView: View {
                 }
                 Spacer(minLength: 0)
             }
-            .padding(.top, DS.Spacing.xs)
+            .padding(.top, backdrop ? 0 : DS.Spacing.xs)
+            .padding(.horizontal, backdrop ? DS.Spacing.s : 0)
+            .frame(maxHeight: backdrop ? .infinity : nil)
+            .background { if backdrop { Capsule().fill(DS.Color.panel) } }
+            .overlay { if backdrop { ThemeOutline(cornerRadius: 999) } }
         }
         .buttonStyle(.plain)
     }
@@ -464,7 +470,7 @@ struct HomeView: View {
             }
         }
         .padding(.vertical, DS.Spacing.xs)
-        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: 16, style: .continuous)).themeOutline(16)
         .padding(.vertical, DS.Spacing.xs)
     }
 }
@@ -473,8 +479,13 @@ struct HomeView: View {
 struct MagicGlow: View {
     @State private var on = false
     var body: some View {
-        Circle()
-            .fill(RadialGradient(colors: [DS.Color.secondary.opacity(0.55), DS.Color.secondary.opacity(0.12), .clear], center: .center, startRadius: 0, endRadius: 120))
+        // テーマの style.glowColor があればその色を濃いめに（明るい背景の上で数字を読めるようにする暗い光）。無ければ secondary の淡い光
+        // 円の内側は濃く、円のすぐ外（半径 84 pt）で消えるようにして、縁が見えないようにする
+        let gradient: Gradient = ThemeStore.shared.theme.glowColor.map {
+            Gradient(stops: [.init(color: $0.opacity(0.9), location: 0), .init(color: $0.opacity(0.75), location: 0.45), .init(color: $0.opacity(0), location: 0.7)])
+        } ?? Gradient(colors: [DS.Color.secondary.opacity(0.55), DS.Color.secondary.opacity(0.12), .clear])
+        return Circle()
+            .fill(RadialGradient(gradient: gradient, center: .center, startRadius: 0, endRadius: 120))
             .scaleEffect(on ? 1.08 : 0.92).opacity(on ? 1 : 0.7)
             .animation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true), value: on)
             .onAppear { on = true }
@@ -1217,7 +1228,7 @@ struct SpotSwitchSheet: View {
                 .textInputAutocapitalization(.never).autocorrectionDisabled()
                 .onAppear { PortReadingIndex.shared.prepare(catalog: PortCatalog.bundled()) }
                 .font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
-                .padding(DS.Spacing.m).background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
+                .padding(DS.Spacing.m).background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous)).themeOutline(DS.Radius.chip)
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: DS.Spacing.s) {
                     if query.isEmpty {
@@ -1263,7 +1274,7 @@ struct SpotSwitchSheet: View {
                 else if accent { Image(systemName: "location.fill").font(.system(size: 12)).foregroundStyle(DS.Color.textSecondary) }
             }
             .padding(DS.Spacing.m)
-            .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
+            .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous)).themeOutline(DS.Radius.chip)
         }
         .buttonStyle(.plain)
     }

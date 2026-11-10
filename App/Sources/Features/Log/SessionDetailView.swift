@@ -73,7 +73,7 @@ struct SessionDetailView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, DS.Spacing.s)
-        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
+        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous)).themeOutline(DS.Radius.chip)
     }
 
     /// 見出し付きの区画（枠線なし、面で区切る）
@@ -84,7 +84,7 @@ struct SessionDetailView: View {
         }
         .padding(DS.Spacing.m)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous))
+        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous)).themeOutline(DS.Radius.card)
     }
 
     /// 答え合わせ（F-29）：釣れ率の推移（緑）に釣れた瞬間の点を重ね、当たっていたかを 1 行で

@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "label": "ちいかわ（星空のテント）",
+  "base": "dark",
+  "fonts": { "text": "rounded", "number": "rounded" },
+  "colors": {
+    "background": "#1A2250",
+    "surface": "#242E60",
+    "surfaceRaised": "#3A4684",
+    "accent": "#FFB3C6",
+    "secondary": "#8FC5FF",
+    "sun": "#FFD36B",
+    "daylight": "#FFB07A",
+    "sea": "#8FC5FF",
+    "moon": "#D9C7FF",
+    "textPrimary": "#FFF8EE",
+    "textSecondary": "#E4D9EC",
+    "textTertiary": "#B7ABC8",
+    "faded": "#6E7AB0",
+    "saturday": "#8FC5FF",
+    "holiday": "#FF8FA3",
+    "panel": "#242E60D9",
+    "scrim": "#141A3C26"
+  },
+  "style": {
+    "glass": true,
+    "glassOpacity": 1,
+    "glassBlur": false,
+    "chipOrnament": "☆",
+    "borderColor": "#FFE9D2D9",
+    "borderWidth": 1.5,
+    "captureFill": "#FFB3C6",
+    "glowColor": "#1E2A5E"
+  }
+}

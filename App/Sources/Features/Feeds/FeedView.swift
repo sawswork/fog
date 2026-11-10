@@ -95,7 +95,7 @@ struct FeedView: View {
             }
             .padding(DS.Spacing.m)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
+            .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous)).themeOutline(DS.Radius.chip)
         }
         .buttonStyle(.plain)
     }
@@ -119,7 +119,7 @@ struct FeedView: View {
         }
         .padding(DS.Spacing.m)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
+        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous)).themeOutline(DS.Radius.chip)
         return Group {
             if let link = item.link, let url = URL(string: link) { Link(destination: url) { content } } else { content }
         }

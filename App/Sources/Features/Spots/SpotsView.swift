@@ -102,7 +102,7 @@ struct SpotsView: View {
                             .buttonStyle(.plain)
                     }
                     .padding(DS.Spacing.m)
-                    .background(DS.Color.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
+                    .background(DS.Color.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous)).themeOutline(DS.Radius.chip)
                     .padding(.horizontal, DS.Spacing.l).padding(.top, DS.Spacing.xl)
                     .padding(.trailing, 56)
                     Spacer()
@@ -351,7 +351,7 @@ struct SpotsView: View {
     private func roundButton(_ symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol).font(.system(size: 16, weight: .semibold)).foregroundStyle(DS.Color.textPrimary)
-                .frame(width: 44, height: 44).background(DS.Color.panel.opacity(0.95), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .frame(width: 44, height: 44).background(DS.Color.panel.opacity(0.95), in: RoundedRectangle(cornerRadius: 14, style: .continuous)).themeOutline(14)
         }
         .buttonStyle(.plain)
     }
@@ -404,7 +404,7 @@ struct SpotsView: View {
                 .padding(6)
             }
             .frame(width: width, height: height)
-            .background(DS.Color.panel.opacity(0.94), in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
+            .background(DS.Color.panel.opacity(0.94), in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous)).themeOutline(DS.Radius.chip)
             .onChange(of: selectedID) { _, id in if let id { withAnimation { reader.scrollTo(id, anchor: .center) } } }
         }
     }
@@ -531,7 +531,7 @@ struct SpotDetailPanel: View {
         .padding(DS.Spacing.m)
         .frame(width: side, height: side, alignment: .top)
         .clipped()
-        .background(DS.Color.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous))
+        .background(DS.Color.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous)).themeOutline(DS.Radius.card)
         .contentShape(Rectangle())
         .onTapGesture(perform: onDetail)
     }
@@ -557,7 +557,7 @@ struct SpotSearchSheet: View {
             TextField("漁港名・地名（かな・ローマ字でも）", text: $text)
                 .font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
                 .textInputAutocapitalization(.never).autocorrectionDisabled()
-                .padding(DS.Spacing.m).background(DS.Color.surface, in: RoundedRectangle(cornerRadius: DS.Radius.chip))
+                .padding(DS.Spacing.m).background(DS.Color.surface, in: RoundedRectangle(cornerRadius: DS.Radius.chip)).themeOutline(DS.Radius.chip)
                 .onSubmit { Task { await search() } }
             ScrollView {
                 VStack(spacing: DS.Spacing.s) {
@@ -603,7 +603,7 @@ struct SpotSearchSheet: View {
             Text(subtitle).font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary).lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(DS.Spacing.m).background(DS.Color.surface, in: RoundedRectangle(cornerRadius: DS.Radius.chip))
+        .padding(DS.Spacing.m).background(DS.Color.surface, in: RoundedRectangle(cornerRadius: DS.Radius.chip)).themeOutline(DS.Radius.chip)
     }
 
     private static func mapItem(for port: Core.Port) -> MKMapItem {
@@ -761,7 +761,7 @@ struct SpotCompareSheet: View {
             Image(systemName: r.conditionCode.map { HomeViewModel.weatherSymbol($0) } ?? "minus").font(.system(size: 16)).foregroundStyle(DS.Color.textSecondary)
         }
         .padding(DS.Spacing.m)
-        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
+        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous)).themeOutline(DS.Radius.chip)
     }
 }
 
@@ -825,7 +825,7 @@ struct FeedPinSheet: View {
                             }
                         }
                         .padding(DS.Spacing.m).frame(maxWidth: .infinity, alignment: .leading)
-                        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
+                        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous)).themeOutline(DS.Radius.chip)
                         if let link = e.link, let url = URL(string: link) { Link(destination: url) { content } } else { content }
                     }
                 }
@@ -893,11 +893,11 @@ struct NoteEditSheet: View {
             }
             TextField("場所（任意）", text: $place)
                 .font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
-                .padding(DS.Spacing.m).background(DS.Color.surface, in: RoundedRectangle(cornerRadius: DS.Radius.chip))
+                .padding(DS.Spacing.m).background(DS.Color.surface, in: RoundedRectangle(cornerRadius: DS.Radius.chip)).themeOutline(DS.Radius.chip)
             TextField("店先で聞いた話など", text: $text, axis: .vertical)
                 .lineLimit(4...8)
                 .font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
-                .padding(DS.Spacing.m).background(DS.Color.surface, in: RoundedRectangle(cornerRadius: DS.Radius.chip))
+                .padding(DS.Spacing.m).background(DS.Color.surface, in: RoundedRectangle(cornerRadius: DS.Radius.chip)).themeOutline(DS.Radius.chip)
             HStack {
                 if let e = existing {
                     Button(role: .destructive) { try? services.store.deleteNote(id: e.id); dismiss() } label: {

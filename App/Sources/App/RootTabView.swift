@@ -153,7 +153,9 @@ struct TabIconsRow: View {
             ZStack {
                 if ThemeAssets.has(.tabCamera) {
                     // 明るいテーマはテーマ色の丸、暗いテーマは黒い丸にテーマ色の光（スライムが発光して見える）
-                    Circle().fill(ThemeStore.shared.theme.isLight ? DS.Color.accent : DS.Color.surfaceRaised).frame(width: compact ? 48 : 58, height: compact ? 48 : 58)
+                    // style.captureFill があればその色（ちいかわはピンクの丸に月）
+                    Circle().fill(ThemeStore.shared.theme.captureFill ?? (ThemeStore.shared.theme.isLight ? DS.Color.accent : DS.Color.surfaceRaised)).frame(width: compact ? 48 : 58, height: compact ? 48 : 58)
+                        .themeOutline(999)
                         .shadow(color: DS.Color.accent.opacity(ThemeStore.shared.theme.isLight ? 0.55 : 0.8), radius: 14)
                     ThemeOrnament(name: .tabCamera).frame(width: compact ? 38 : 46, height: compact ? 38 : 46)
                         .shadow(color: .black.opacity(0.35), radius: 2, y: 1)

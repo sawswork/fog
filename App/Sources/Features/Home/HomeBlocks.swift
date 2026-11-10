@@ -95,7 +95,12 @@ struct GlassShape: View {
             shape.fill(DS.Color.panel.opacity(opacity))
             // 上辺がわずかに明るいガラスの質感
             shape.fill(LinearGradient(colors: [Color.white.opacity(0.10), Color.white.opacity(0.02), .clear], startPoint: .top, endPoint: .bottom))
-            shape.strokeBorder(Color.white.opacity(0.35), lineWidth: 1)
+            // テーマの style.borderColor があればその色と太さ、無ければ薄い白い枠
+            if let outline = ThemeStore.shared.theme.outlineColor {
+                shape.strokeBorder(outline, lineWidth: ThemeStore.shared.theme.outlineWidth)
+            } else {
+                shape.strokeBorder(Color.white.opacity(0.35), lineWidth: 1)
+            }
         }
     }
 }

@@ -142,7 +142,7 @@ struct CaptureView: View {
                         if model.rig?.id == r.id { Circle().fill(DS.Color.accent).frame(width: 8, height: 8) }
                     }
                     .padding(DS.Spacing.m)
-                    .background(DS.Color.surface, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
+                    .background(DS.Color.surface, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous)).themeOutline(DS.Radius.chip)
                 }
                 .buttonStyle(.plain)
             }
@@ -263,7 +263,7 @@ struct ResultSheet: View {
                 }
             }
             .padding(DS.Spacing.l)
-            .background(DS.Color.surface.opacity(0.96), in: RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous))
+            .background(DS.Color.surface.opacity(0.96), in: RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous)).themeOutline(DS.Radius.card)
             .padding(.horizontal, DS.Spacing.l)
             .padding(.bottom, 120)
             .onTapGesture { onDismiss() }

@@ -28,6 +28,13 @@ struct AppTheme: Identifiable, Hashable {
     var colorScheme: ColorScheme { isLight ? .light : .dark }
     /// ホーム 1 画面の配置（あればホームは部品を JSON の座標に並べる。F-58）
     var home: HomeLayout? { spec?.home }
+    /// 面の輪郭線（`style.borderColor`）。無ければ nil（輪郭なし）
+    var outlineColor: Color? { spec?.style?.parsedBorderColor.map { Color(red: $0.r, green: $0.g, blue: $0.b, opacity: $0.a) } }
+    var outlineWidth: CGFloat { CGFloat(spec?.style?.resolvedBorderWidth ?? 1.5) }
+    /// 撮影ボタンの丸の色（`style.captureFill`）
+    var captureFill: Color? { spec?.style?.parsedCaptureFill.map { Color(red: $0.r, green: $0.g, blue: $0.b, opacity: $0.a) } }
+    /// 釣れ率の円の後ろの光の色（`style.glowColor`）
+    var glowColor: Color? { spec?.style?.parsedGlowColor.map { Color(red: $0.r, green: $0.g, blue: $0.b, opacity: $0.a) } }
 
     static func == (l: AppTheme, r: AppTheme) -> Bool { l.id == r.id }
     func hash(into h: inout Hasher) { h.combine(id) }
@@ -552,6 +559,24 @@ struct ThemeBackground: View {
         }
         .ignoresSafeArea()
     }
+}
+
+/// テーマの `style.borderColor` があるときだけ、面の輪郭線を描く（F-58）。無いテーマでは何も描かない（標準は枠線なし）
+struct ThemeOutline: View {
+    var cornerRadius: CGFloat
+    var body: some View {
+        let theme = ThemeStore.shared.theme
+        if let color = theme.outlineColor {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .strokeBorder(color, lineWidth: theme.outlineWidth)
+                .allowsHitTesting(false)
+        }
+    }
+}
+
+extension View {
+    /// 面の上にテーマの輪郭線を重ねる。丸い面（Capsule）は大きな半径（999）を渡す
+    func themeOutline(_ cornerRadius: CGFloat) -> some View { overlay { ThemeOutline(cornerRadius: cornerRadius) } }
 }
 
 /// 黒背景で描かれた飾り画像（タブのアイコン・飾り枠）を、黒を透かして重ねる

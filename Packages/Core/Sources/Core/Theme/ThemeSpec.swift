@@ -45,9 +45,25 @@ public struct ThemeSpec: Codable, Hashable, Sendable {
         public var chipOrnament: String?
         /// 撮影ボタンの SF Symbols 名（例 "moon.fill"）。省略は camera.fill
         public var captureSymbol: String?
-        public init(chipTilt: Double? = nil, chipPerspective: Double? = nil, glass: Bool? = nil, glassOpacity: Double? = nil, glassBlur: Bool? = nil, chipOrnament: String? = nil, captureSymbol: String? = nil) {
+        /// 面（チップ・カード・一覧の行など）の輪郭線の色（"#RRGGBB" か "#RRGGBBAA"）。省略は輪郭なし（ガラスは薄い白い枠）
+        public var borderColor: String?
+        /// 輪郭線の太さ（pt。省略は 1.5、0.5〜4 に収める）
+        public var borderWidth: Double?
+        /// 撮影ボタンの丸の色（タブの画像 tab_camera があるテーマ用。省略は土台の既定）
+        public var captureFill: String?
+        /// 釣れ率の円の後ろの光の色（省略は secondary）。暗い色にすると、明るい背景の上でも数字が読める
+        public var glowColor: String?
+        public init(chipTilt: Double? = nil, chipPerspective: Double? = nil, glass: Bool? = nil, glassOpacity: Double? = nil, glassBlur: Bool? = nil, chipOrnament: String? = nil, captureSymbol: String? = nil,
+                    borderColor: String? = nil, borderWidth: Double? = nil, captureFill: String? = nil, glowColor: String? = nil) {
             self.chipTilt = chipTilt; self.chipPerspective = chipPerspective; self.glass = glass; self.glassOpacity = glassOpacity; self.glassBlur = glassBlur; self.chipOrnament = chipOrnament; self.captureSymbol = captureSymbol
+            self.borderColor = borderColor; self.borderWidth = borderWidth; self.captureFill = captureFill; self.glowColor = glowColor
         }
+        /// 輪郭線の色（読めなければ nil）
+        public var parsedBorderColor: HexColor? { borderColor.flatMap { HexColor($0) } }
+        /// 輪郭線の太さ（0.5〜4 pt）
+        public var resolvedBorderWidth: Double { min(4, max(0.5, borderWidth ?? 1.5)) }
+        public var parsedCaptureFill: HexColor? { captureFill.flatMap { HexColor($0) } }
+        public var parsedGlowColor: HexColor? { glowColor.flatMap { HexColor($0) } }
     }
 
     public struct Fonts: Codable, Hashable, Sendable {
