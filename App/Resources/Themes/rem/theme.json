@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "label": "レム（月夜の鳥居）",
+  "base": "dark",
+  "fonts": { "text": "default", "number": "serif" },
+  "colors": {
+    "background": "#06091A",
+    "surface": "#0E1424",
+    "surfaceRaised": "#1B2748",
+    "accent": "#5AA9FF",
+    "secondary": "#3F74E0",
+    "sun": "#F2C879",
+    "daylight": "#FF9A6B",
+    "sea": "#6FB6FF",
+    "moon": "#C9B8FF",
+    "textPrimary": "#F2F6FF",
+    "textSecondary": "#C4D0E8",
+    "textTertiary": "#8C9ABA",
+    "faded": "#4A587C",
+    "saturday": "#6FB6FF",
+    "holiday": "#FF6E7D",
+    "panel": "#060A183D",
+    "scrim": "#0406101F"
+  },
+  "style": {
+    "glass": true,
+    "glassOpacity": 1,
+    "glassBlur": false,
+    "chipOrnament": "✦",
+    "borderColor": "#AACDFF78",
+    "borderWidth": 1,
+    "captureFill": "#101E46",
+    "glowColor": "#060A1A"
+  }
+}
