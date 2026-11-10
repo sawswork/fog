@@ -1,4 +1,5 @@
 import SwiftUI
+import ImageIO
 import UniformTypeIdentifiers
 import Core
 
@@ -829,38 +830,33 @@ struct SourcesSettingsView: View {
 
 struct ThemeSettingsView: View {
     @State private var theme: AppTheme = ThemeStore.shared.theme
+    /// 同梱している画像の一覧（開発用）。ふだんは畳んでおく
+    @State private var showFiles = false
+
+    private let columns = [GridItem(.flexible(), spacing: DS.Spacing.s), GridItem(.flexible(), spacing: DS.Spacing.s), GridItem(.flexible(), spacing: DS.Spacing.s)]
 
     var body: some View {
         SettingsPage(title: "テーマ") {
             List {
+                // テーマは絵つきのカードで選ぶ。以前の横並びの切替は 8 個で名前が「フリ…」「ちい…」と切れて読めなかった（2026-11-10 開発者の指摘）
                 Section {
-                    Picker("テーマ", selection: $theme) {
-                        ForEach(AppTheme.all) { Text($0.label).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    .settingsRow()
-                    Text("切り替えると全画面に反映されます。魔導書は画像が無くても色と書体だけで動きます")
-                        .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary).settingsRow()
-                } header: { SectionLabel(text: "見た目") }
-                if theme.hasAssets {
-                    Section {
-                        ForEach(ThemeAssets.Name.allCases, id: \.rawValue) { name in
-                            HStack(spacing: DS.Spacing.s) {
-                                Image(systemName: ThemeAssets.exists(name, theme: theme) ? "checkmark.circle.fill" : "circle.dashed")
-                                    .foregroundStyle(ThemeAssets.exists(name, theme: theme) ? DS.Color.secondary : DS.Color.textTertiary)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(name.rawValue).font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
-                                    Text(name.note).font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
-                                }
-                                Spacer()
-                            }
-                            .settingsRow()
+                    LazyVGrid(columns: columns, spacing: DS.Spacing.s) {
+                        ForEach(AppTheme.all) { t in
+                            Button { theme = t } label: { ThemeCard(theme: t, selected: t == theme) }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(t.label)
+                                .accessibilityAddTraits(t == theme ? .isSelected : [])
                         }
-                        Text("App/Resources/Themes/\(theme.assetFolder)/ に PNG か JPG で置くと次のビルドから使われます")
-                            .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary).settingsRow()
-                        Text(ThemeAssets.diagnostics(for: theme))
-                            .font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary).settingsRow()
-                    } header: { SectionLabel(text: "画像（\(ThemeAssets.Name.allCases.filter { ThemeAssets.exists($0, theme: theme) }.count)/\(ThemeAssets.Name.allCases.count)）") }
+                    }
+                    .padding(.vertical, DS.Spacing.xs)
+                    .listRowInsets(EdgeInsets(top: DS.Spacing.s, leading: DS.Spacing.m, bottom: DS.Spacing.s, trailing: DS.Spacing.m))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    Text("タップすると全画面に反映されます")
+                        .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+                        .listRowBackground(Color.clear).listRowSeparator(.hidden)
+                } header: { SectionLabel(text: "見た目：\(theme.label)") }
+                if theme.hasAssets {
                     let characters = ThemeAssets.Name.allCases.filter { $0.isCharacter && ThemeAssets.exists($0, theme: theme) }
                     if !characters.isEmpty {
                         Section {
@@ -869,11 +865,126 @@ struct ThemeSettingsView: View {
                             }
                         } header: { SectionLabel(text: "キャラクターの位置（画面を見ながら調整。閉じると反映）") }
                     }
+                    Section {
+                        Button { withAnimation { showFiles.toggle() } } label: {
+                            HStack(spacing: DS.Spacing.s) {
+                                Text("同梱している画像").font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
+                                Spacer()
+                                Text("\(ThemeAssets.Name.allCases.filter { ThemeAssets.exists($0, theme: theme) }.count)/\(ThemeAssets.Name.allCases.count)")
+                                    .font(DS.Font.number(13)).foregroundStyle(DS.Color.textSecondary)
+                                Image(systemName: showFiles ? "chevron.up" : "chevron.down").font(.system(size: 12, weight: .semibold)).foregroundStyle(DS.Color.textTertiary)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .settingsRow()
+                        if showFiles {
+                            ForEach(ThemeAssets.Name.allCases, id: \.rawValue) { name in
+                                HStack(spacing: DS.Spacing.s) {
+                                    Image(systemName: ThemeAssets.exists(name, theme: theme) ? "checkmark.circle.fill" : "circle.dashed")
+                                        .foregroundStyle(ThemeAssets.exists(name, theme: theme) ? DS.Color.secondary : DS.Color.textTertiary)
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(name.rawValue).font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
+                                        Text(name.note).font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+                                    }
+                                    Spacer()
+                                }
+                                .settingsRow()
+                            }
+                            Text("App/Resources/Themes/\(theme.assetFolder)/ に PNG か JPG で置くと次のビルドから使われます")
+                                .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary).settingsRow()
+                            Text(ThemeAssets.diagnostics(for: theme))
+                                .font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary).settingsRow()
+                        }
+                    } header: { SectionLabel(text: "開発用") }
                 }
             }
             .listStyle(.plain)
         }
         .onChange(of: theme) { _, t in ThemeStore.shared.theme = t }
+    }
+}
+
+/// テーマ 1 つのカード：ホームの背景の小さな絵、配色の点、名前（切らずに 2 行まで）。選択中はテーマ色の枠とチェック
+private struct ThemeCard: View {
+    let theme: AppTheme
+    let selected: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Color.clear
+                .aspectRatio(0.66, contentMode: .fit)
+                .overlay { ThemeThumbnail(theme: theme) }
+                .overlay(alignment: .bottomLeading) {
+                    // そのテーマの配色（テーマ色・潮の色・文字の色）
+                    HStack(spacing: 4) {
+                        ForEach(Array([theme.palette.accent, theme.palette.sea, theme.palette.textPrimary].enumerated()), id: \.offset) { _, c in
+                            Circle().fill(c).frame(width: 10, height: 10).overlay(Circle().strokeBorder(Color.black.opacity(0.25), lineWidth: 0.5))
+                        }
+                    }
+                    .padding(6)
+                }
+                .overlay(alignment: .topTrailing) {
+                    if selected {
+                        Image(systemName: "checkmark.circle.fill").font(.system(size: 20, weight: .bold))
+                            .foregroundStyle(DS.Color.background, DS.Color.accent).padding(5)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            Text(theme.label)
+                .font(.system(size: 12, weight: selected ? .bold : .medium))
+                .foregroundStyle(selected ? DS.Color.textPrimary : DS.Color.textSecondary)
+                .lineLimit(2).multilineTextAlignment(.leading).minimumScaleFactor(0.85)
+                .frame(maxWidth: .infinity, minHeight: 30, alignment: .topLeading)
+        }
+        .padding(6)
+        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(selected ? DS.Color.accent : Color.clear, lineWidth: 2))
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+/// テーマのホームの背景を小さく読んだ絵（画像の無いテーマは地の色に「79」）。縮小は裏で 1 回だけ行い、名前で覚える
+private struct ThemeThumbnail: View {
+    let theme: AppTheme
+    @State private var image: UIImage?
+    private static let cache = NSCache<NSString, UIImage>()
+
+    var body: some View {
+        ZStack {
+            theme.palette.background
+            if let image {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else if !theme.hasAssets {
+                Text("79").font(.system(size: 30, weight: .bold, design: theme.numberDesign)).foregroundStyle(theme.palette.textPrimary)
+            }
+        }
+        .task(id: theme.id) { await load() }
+    }
+
+    private func load() async {
+        if let cached = Self.cache.object(forKey: theme.id as NSString) { image = cached; return }
+        guard theme.hasAssets else { return }
+        let dirs = [ThemeAssets.directory(for: theme), theme.fallbackFolder.flatMap { ThemeAssets.directory(named: $0) }].compactMap { $0 }
+        var found: URL?
+        search: for dir in dirs {
+            for ext in ["jpg", "png", "jpeg", "JPG", "PNG"] {
+                let url = dir.appendingPathComponent("bg_home.\(ext)")
+                if FileManager.default.fileExists(atPath: url.path) { found = url; break search }
+            }
+        }
+        guard let url = found else { return }
+        let made = await Task.detached(priority: .userInitiated) { () -> UIImage? in
+            guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+            let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true,
+                                            kCGImageSourceThumbnailMaxPixelSize: 480]
+            guard let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+            return UIImage(cgImage: cg)
+        }.value
+        if let made {
+            Self.cache.setObject(made, forKey: theme.id as NSString)
+            image = made
+        }
     }
 }
 
