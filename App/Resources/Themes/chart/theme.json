@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "label": "海図（1 画面）",
+  "base": "dark",
+  "screen": "chart",
+  "colors": {
+    "background": "#060A0F",
+    "surface": "#0E151C",
+    "surfaceRaised": "#18222D",
+    "accent": "#FF7A1A",
+    "secondary": "#FF7A1A",
+    "sea": "#63D6E6",
+    "textPrimary": "#F3F6F8",
+    "textSecondary": "#A3ADB8",
+    "textTertiary": "#6B7882",
+    "faded": "#3A4650",
+    "panel": "#0E151C"
+  }
+}

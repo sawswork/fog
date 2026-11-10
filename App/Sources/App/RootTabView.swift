@@ -7,8 +7,8 @@ struct RootTabView: View {
     enum Tab: Hashable { case home, log, capture, guide, spots }
     @State private var selected: Tab = .home
     @Environment(AppServices.self) private var services
-    /// 海図の 1 画面（F-63、既定）。オフにするとこれまでのタブとテーマ（設定 > テーマ）
-    @AppStorage(ChartStyle.modeKey) private var chartMode = true
+    /// 海図の 1 画面（F-63）。テーマの 1 つで、設定 > テーマ で「海図」を選んだときだけこの画面になる
+    private var chartMode: Bool { ThemeStore.shared.theme.isChart }
     @State private var chartCamera = false
 
     /// テーマの配置がタブバーを消しているか（F-58）。画面の行き来はホームの部品（nav / button）と、他の画面の右下のホームボタン

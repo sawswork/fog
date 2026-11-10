@@ -106,6 +106,17 @@ final class ThemeSpecTests: XCTestCase {
         XCTAssertNil(char.parsedColor)
     }
 
+    /// 画面の構成（F-63）：`"screen": "chart"` のテーマは海図の 1 画面。省略と知らない値はこれまでの 5 画面
+    func testScreenKind() throws {
+        let chart = try ThemeSpec.parse(Data(##"{"label":"海図","screen":"chart","colors":{"accent":"#FF7A1A"}}"##.utf8))
+        XCTAssertTrue(chart.isChartScreen)
+        XCTAssertFalse(try ThemeSpec.parse(Data(##"{"label":"森"}"##.utf8)).isChartScreen)
+        XCTAssertFalse(try ThemeSpec.parse(Data(##"{"label":"森","screen":"tabs"}"##.utf8)).isChartScreen)
+        // 書き戻しても残る
+        let again = try JSONDecoder().decode(ThemeSpec.self, from: JSONEncoder().encode(chart))
+        XCTAssertEqual(again.screen, "chart")
+    }
+
     func testStyleSection() throws {
         let spec = try ThemeSpec.parse(Data(#"{"style":{"chipTilt":-5,"chipPerspective":18,"glass":true,"chipOrnament":"✦","captureSymbol":"moon.fill"}}"#.utf8))
         XCTAssertEqual(spec.style?.chipTilt, -5)

@@ -26,6 +26,8 @@ struct AppTheme: Identifiable, Hashable {
     var rawValue: String { id }
     var hasAssets: Bool { !assetFolder.isEmpty }
     var colorScheme: ColorScheme { isLight ? .light : .dark }
+    /// 海図の 1 画面のテーマか（`"screen": "chart"`。F-63）。選ぶとタブの 5 画面の代わりに `ChartHomeView` を出す
+    var isChart: Bool { spec?.isChartScreen == true }
     /// ホーム 1 画面の配置（あればホームは部品を JSON の座標に並べる。F-58）
     var home: HomeLayout? { spec?.home }
     /// 面の輪郭線（`style.borderColor`）。無ければ nil（輪郭なし）
