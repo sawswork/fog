@@ -20,6 +20,8 @@ final class PartyService {
     private static let log = Logger(subsystem: "fog", category: "party")
 
     private(set) var items: [SharedCatch] = []
+    /// 全員の釣行の要約（F-62）。自分の端末の分も含む
+    private(set) var sessions: [SharedSession] = []
     private(set) var revision = 0
     private(set) var lastError: String?
     private(set) var lastSyncAt: Date?
@@ -27,6 +29,8 @@ final class PartyService {
     private var gate = FetchGate(minimumInterval: 1800)
     /// アップロード済みの釣果の内容キー（内容が変わったときだけ送り直す）
     private var uploaded: [String: String] = [:]
+    /// アップロード済みの釣行の内容キー（釣行の id → `SharedSession.contentKey`）
+    private var uploadedSessions: [String: String] = [:]
     private var pendingDeletes: [String] = []
     private let container: CKContainer?
 
@@ -64,6 +68,12 @@ final class PartyService {
     var others: [SharedCatch] {
         let me = AnglerSettings.deviceID
         return items.filter { $0.device != me }.sorted { $0.at > $1.at }
+    }
+
+    /// 仲間の端末の釣行（F-62）。新しい順
+    var otherSessions: [SharedSession] {
+        let me = AnglerSettings.deviceID
+        return sessions.filter { $0.device != me }.sorted { $0.startedAt > $1.startedAt }
     }
 
     /// 仲間の投稿のサムネイル（取得済みのものだけ）
@@ -150,11 +160,64 @@ final class PartyService {
                 if uploaded[shared.id.uuidString] != contentKey(shared, photo: photo) { todo.append((shared, photo)) }
             }
         }
+        // 消した釣行は公開 DB からも消す（F-62）
+        let alive = Set(sessions.map { $0.id.uuidString })
+        for id in Array(uploadedSessions.keys) where !alive.contains(id) {
+            uploadedSessions[id] = nil
+            pendingDeletes.append(SharedSession.recordPrefix + id)
+        }
         await flushDeletes()
-        guard !todo.isEmpty else { return }
         // 1 回に 10 件まで（写真本体が 1 枚 数百 KB 付くため）
         for chunk in stride(from: 0, to: todo.count, by: 10).map({ Array(todo[$0..<min($0 + 10, todo.count)]) }) {
             await upload(chunk, store: store)
+        }
+        await uploadSessions(sessions, store: store)
+    }
+
+    /// 釣行の要約を送る（F-62）。内容が変わったものだけ。釣果と同じレコード型に `payload` の JSON として置く（新しいレコード型は要らない）
+    private func uploadSessions(_ list: [Core.Session], store: FogStore) async {
+        guard let db = container?.publicCloudDatabase else { return }
+        var pending: [SharedSession] = []
+        for s in list {
+            let shared = SharedSession.make(from: s, spot: try? store.spot(id: s.spotID), ownName: AnglerSettings.ownName, device: AnglerSettings.deviceID)
+            if uploadedSessions[s.id.uuidString] != shared.contentKey { pending.append(shared) }
+        }
+        guard !pending.isEmpty else { return }
+        for chunk in stride(from: 0, to: pending.count, by: 50).map({ Array(pending[$0..<min($0 + 50, pending.count)]) }) {
+            var records: [CKRecord] = []
+            for s in chunk {
+                guard let payload = try? FogJSON.encode(s, pretty: false) else { continue }
+                let record = CKRecord(recordType: Self.recordType, recordID: CKRecord.ID(recordName: s.recordName))
+                record["payload"] = String(decoding: payload, as: UTF8.self)
+                record["at"] = s.startedAt
+                record["updatedAt"] = s.updatedAt
+                record["angler"] = s.owner
+                record["device"] = s.device
+                record["species"] = ""
+                records.append(record)
+            }
+            guard !records.isEmpty else { continue }
+            do {
+                let result = try await db.modifyRecords(saving: records, deleting: [], savePolicy: .allKeys, atomically: false)
+                for (id, r) in result.saveResults {
+                    switch r {
+                    case .success:
+                        if let s = chunk.first(where: { $0.recordName == id.recordName }) {
+                            uploadedSessions[s.id.uuidString] = s.contentKey
+                            self.sessions.removeAll { $0.id == s.id }
+                            self.sessions.append(s)
+                        }
+                    case .failure(let e):
+                        Self.log.notice("party session save failed \(id.recordName, privacy: .public): \(e.localizedDescription, privacy: .public)")
+                        lastError = Self.describe(e)
+                    }
+                }
+                revision += 1
+                save()
+            } catch {
+                lastError = Self.describe(error)
+                Self.log.notice("party session upload failed: \(error.localizedDescription, privacy: .public)")
+            }
         }
     }
 
@@ -240,6 +303,7 @@ final class PartyService {
         let query = CKQuery(recordType: Self.recordType, predicate: NSPredicate(format: "at > %@", Date(timeIntervalSince1970: 0) as NSDate))
         query.sortDescriptors = [NSSortDescriptor(key: "at", ascending: false)]
         var fetched: [SharedCatch] = []
+        var fetchedSessions: [SharedSession] = []
         var assets: [UUID: URL] = [:]
         do {
             // 写真本体（photo）は一覧では取らない（全画面で見たときだけ）
@@ -248,8 +312,13 @@ final class PartyService {
             var pages = 0
             while true {
                 for (_, r) in result.matchResults {
-                    guard case .success(let record) = r, let json = record["payload"] as? String,
-                          let s = try? FogJSON.decode(SharedCatch.self, from: Data(json.utf8)) else { continue }
+                    guard case .success(let record) = r, let json = record["payload"] as? String else { continue }
+                    // 釣行の要約（F-62）は同じレコード型に入っている。JSON の形で見分ける
+                    if let session = try? FogJSON.decode(SharedSession.self, from: Data(json.utf8)), session.kind == SharedSession.kindValue {
+                        fetchedSessions.append(session)
+                        continue
+                    }
+                    guard let s = try? FogJSON.decode(SharedCatch.self, from: Data(json.utf8)) else { continue }
                     fetched.append(s)
                     if let asset = record["thumbnail"] as? CKAsset, let url = asset.fileURL { assets[s.id] = url }
                 }
@@ -282,6 +351,7 @@ final class PartyService {
             }
         }
         items = fetched
+        sessions = fetchedSessions
         lastError = nil
         revision += 1
     }
@@ -299,16 +369,22 @@ final class PartyService {
 
     // MARK: 保存（App Group の JSON）
 
-    private struct Persisted: Codable { var items: [SharedCatch]; var uploaded: [String: String]; var pendingDeletes: [String]; var gate: FetchGate; var lastSyncAt: Date? }
+    private struct Persisted: Codable {
+        var items: [SharedCatch]; var uploaded: [String: String]; var pendingDeletes: [String]; var gate: FetchGate; var lastSyncAt: Date?
+        /// F-62 で追加（古い保存データには無い）
+        var sessions: [SharedSession]?
+        var uploadedSessions: [String: String]?
+    }
 
     private func load() {
         guard let data = try? Data(contentsOf: storeURL), let p = try? FogJSON.decode(Persisted.self, from: data) else { return }
         items = p.items; uploaded = p.uploaded; pendingDeletes = p.pendingDeletes; gate = p.gate; lastSyncAt = p.lastSyncAt
+        sessions = p.sessions ?? []; uploadedSessions = p.uploadedSessions ?? [:]
         revision += 1
     }
 
     private func save() {
-        guard let data = try? FogJSON.encode(Persisted(items: items, uploaded: uploaded, pendingDeletes: pendingDeletes, gate: gate, lastSyncAt: lastSyncAt), pretty: false) else { return }
+        guard let data = try? FogJSON.encode(Persisted(items: items, uploaded: uploaded, pendingDeletes: pendingDeletes, gate: gate, lastSyncAt: lastSyncAt, sessions: sessions, uploadedSessions: uploadedSessions), pretty: false) else { return }
         try? data.write(to: storeURL, options: .atomic)
     }
 }

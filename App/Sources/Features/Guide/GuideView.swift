@@ -160,18 +160,21 @@ struct GuideTile: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ZStack(alignment: .topTrailing) {
-                Group {
-                    if let thumbnail, let ui = UIImage(data: thumbnail) {
-                        Image(uiImage: ui).resizable().scaledToFill()
-                    } else {
-                        ZStack {
-                            DS.Color.surfaceRaised
-                            Image(systemName: "fish.fill").font(.system(size: 28)).foregroundStyle(DS.Color.faded)
+                // 正方形の枠を先に決め、写真はその中に敷いてはみ出しを切る。
+                // 以前は写真に直接 aspectRatio(.fill) を掛けていて、横長・縦長の写真がカードの外まで広がっていた（2026-11-10 開発者の指摘）
+                Color.clear
+                    .aspectRatio(1, contentMode: .fit)
+                    .overlay {
+                        if let thumbnail, let ui = UIImage(data: thumbnail) {
+                            Image(uiImage: ui).resizable().scaledToFill()
+                        } else {
+                            ZStack {
+                                DS.Color.surfaceRaised
+                                Image(systemName: "fish.fill").font(.system(size: 28)).foregroundStyle(DS.Color.faded)
+                            }
                         }
                     }
-                }
-                .aspectRatio(1, contentMode: .fill)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 if entry.recentlyUpdated {
                     Circle().fill(DS.Color.accent).frame(width: 10, height: 10).padding(8)
                 }

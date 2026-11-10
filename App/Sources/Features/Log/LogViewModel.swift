@@ -15,11 +15,44 @@ final class LogViewModel {
         let session: Core.Session
         let spotName: String
         let thumbnail: Data?
+        /// いっしょに行った人（F-62。時間と場所から自動で決める）
+        var companions: [String] = []
         var id: UUID { session.id }
+    }
+
+    /// 仲間の釣行（自分は行っていない。F-62）
+    struct FriendTripCard: Identifiable {
+        let trip: PartyTrip
+        let catches: [SharedCatch]
+        let thumbnail: Data?
+        var id: UUID { trip.id }
+    }
+
+    /// ログの釣行の並び：自分の釣行と仲間の釣行を新しい順に混ぜる
+    enum Item: Identifiable {
+        case own(SessionCard)
+        case friend(FriendTripCard)
+        var id: UUID {
+            switch self {
+            case .own(let c): return c.id
+            case .friend(let f): return f.id
+            }
+        }
+        var startedAt: Date {
+            switch self {
+            case .own(let c): return c.session.startedAt
+            case .friend(let f): return f.trip.startedAt
+            }
+        }
     }
 
     var period: Period = .month { didSet { refresh() } }
     private(set) var cards: [SessionCard] = []
+    /// 自分の釣行と仲間の釣行（新しい順）
+    private(set) var items: [Item] = []
+    /// 自分の釣行ごとの同行者と、同行した仲間の端末の釣果
+    private(set) var companions: [UUID: [String]] = [:]
+    private(set) var companionCatches: [UUID: [SharedCatch]] = [:]
     private(set) var sessionCount = 0
     private(set) var catchCount = 0
     private(set) var latestReport: (summary: String, session: Core.Session)?
@@ -43,10 +76,27 @@ final class LogViewModel {
         allSessions = (try? store.sessions()) ?? []
         spots = Dictionary(uniqueKeysWithValues: ((try? store.spots()) ?? []).map { ($0.id, $0) })
         let filtered = allSessions.filter { !$0.isActive && inPeriod($0.startedAt) }
+        // 誰といっしょに行ったか（F-62）：自分の釣行と仲間の端末の釣行を、時間と場所で突き合わせる
+        let party = services.party
+        let ownName = AnglerSettings.ownName, me = AnglerSettings.deviceID
+        let ownLegs = allSessions.map { s in PartyTrip.Leg(SharedSession.make(from: s, spot: spots[s.spotID], ownName: ownName, device: me)) }
+        let otherLegs = PartyService.isEnabled ? party.otherSessions.map { PartyTrip.Leg($0) } : []
+        let sharedCatches = PartyService.isEnabled ? party.others : []
+        let resolved = PartyTrips.resolve(own: ownLegs, others: otherLegs, ownName: ownName)
+        companions = resolved.companions
+        companionCatches = resolved.companionLegs.mapValues { PartyTrips.catches(in: $0, from: sharedCatches) }
         cards = filtered.map { s in
             let best = s.catches.filter { $0.lengthCm != nil }.max { ($0.lengthCm ?? 0) < ($1.lengthCm ?? 0) } ?? s.catches.first
-            return SessionCard(session: s, spotName: spots[s.spotID]?.name ?? "釣り場", thumbnail: best.flatMap { store.thumbnail(catchID: $0.id) })
+            return SessionCard(session: s, spotName: spots[s.spotID]?.name ?? "釣り場", thumbnail: best.flatMap { store.thumbnail(catchID: $0.id) },
+                               companions: resolved.companions[s.id] ?? [])
         }
+        // 自分が行っていない仲間の釣行（記録中も出す）
+        let friendCards: [FriendTripCard] = resolved.friendTrips.filter { inPeriod($0.startedAt) }.map { trip in
+            let list = PartyTrips.catches(in: trip.legs, from: sharedCatches)
+            let best = list.filter { $0.lengthCm != nil }.max { ($0.lengthCm ?? 0) < ($1.lengthCm ?? 0) } ?? list.first
+            return FriendTripCard(trip: trip, catches: list, thumbnail: best.flatMap { party.thumbnail(for: $0.id) })
+        }
+        items = (cards.map { Item.own($0) } + friendCards.map { Item.friend($0) }).sorted { $0.startedAt > $1.startedAt }
         sessionCount = filtered.count
         catchCount = filtered.reduce(0) { $0 + $1.catches.count }
         if let latest = allSessions.first(where: { $0.report != nil }), let r = latest.report {
@@ -92,8 +142,10 @@ final class LogViewModel {
         refresh()
     }
 
-    func durationText(_ s: Core.Session) -> String {
-        let minutes = Int((s.duration ?? 0) / 60)
+    func durationText(_ s: Core.Session) -> String { durationText(s.duration ?? 0) }
+
+    func durationText(_ seconds: TimeInterval) -> String {
+        let minutes = Int(seconds / 60)
         return minutes >= 60 ? "\(minutes / 60)h\(minutes % 60 > 0 ? "\(minutes % 60)m" : "")" : "\(minutes)m"
     }
 }
