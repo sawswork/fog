@@ -115,7 +115,7 @@ final class ThemeSpecTests: XCTestCase {
         XCTAssertEqual(spec.style?.captureSymbol, "moon.fill")
         XCTAssertNil(try ThemeSpec.parse(Data("{}".utf8)).style)
         // 輪郭線と撮影ボタンの色（2026-11-10）
-        let outlined = try ThemeSpec.parse(Data(#"{"style":{"borderColor":"#FFE9D2CC","borderWidth":9,"captureFill":"#FFB3C6","glowColor":"#1A2250"}}"#.utf8))
+        let outlined = try ThemeSpec.parse(Data(##"{"style":{"borderColor":"#FFE9D2CC","borderWidth":9,"captureFill":"#FFB3C6","glowColor":"#1A2250"}}"##.utf8))
         XCTAssertEqual(outlined.style?.parsedBorderColor?.a ?? 0, 0.8, accuracy: 0.01)
         XCTAssertEqual(outlined.style?.resolvedBorderWidth, 4)
         XCTAssertEqual(outlined.style?.parsedCaptureFill?.r ?? 0, 1.0, accuracy: 0.001)
