@@ -445,7 +445,7 @@ F-12（手入力サイズ）、F-15（針ロスト・根掛かりマップの完
 受け入れ条件
 - [x] 開発者に予想図を見せて方向を確認（`docs/ui/chart_preview.jpg`。A/B 案 → 情報を増やした海図案 →「この方向でいい」）
 - [x] Core：`PortChart`（緯度経度 ↔ 絵の位置、水面の網目）、`PortChartCatalog`（同梱の索引）、`CastPredictor`（投げる場所の見立て）。`swift test` 緑
-- [x] 港の海図：`scripts/port_charts/` で道南の港を生成（函館・鹿部・森・八雲に近い順、`gemini-3.1-flash-image`、水面の重なり 0.68 以上だけ採用）。CHART_COUNT 港を同梱
+- [x] 港の海図：`scripts/port_charts/` で道南の港を生成（函館・鹿部・森・八雲に近い順、`gemini-3.1-flash-image`、水面の重なり 0.68 以上だけ採用）。道南 105 港すべてを同梱（予算内で完走。目で検査して崩れた 4 港は作り直し）
 - [x] App：`ChartHomeView`（待機中／釣行中）、`ChartMapView`（港の絵・風の流れ・見立て・釣果・現在地・風向の計器）、`ChartForecastStrip`（9 時間先。なぞるとその時刻に）、ロスト・撮影・終了（長押し）、「≡」からログ・図鑑・釣り場・釣果情報・相談・設定
 - [x] 海図の無い港は Apple の地図に落とす。設定 > 画面とテーマ でこれまでの画面に戻せる。出典（地理院タイル）を 設定 > 情報源 に
 - [ ] ios-build 緑 → TestFlight へ配信
