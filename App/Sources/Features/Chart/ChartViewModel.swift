@@ -15,13 +15,30 @@ final class ChartViewModel {
         let at: Date
     }
 
+    /// 潮の動き（マークで出す）
+    enum TideState { case rising, falling, slack }
+
     struct Conditions {
+        /// 潮位（"47cm"）。上げ・下げは `tideState` のマークで出す
         var tide = "—"
+        var tideState: TideState?
+        /// 風速（"2m"）。向きは `windFromDeg` のマークで出す
         var wind = "—"
         var wave = "—"
         var temp = "—"
+        /// 降水確率（"30%"）と天気の印（SF Symbols）
+        var rain = "—"
+        var weatherSymbol: String?
         var windFromDeg: Double?
         var windSpeedMS: Double?
+        /// 読み上げ用（"西南西"）
+        var windName: String?
+    }
+
+    /// 潮位の線の 1 点
+    struct TideSample: Hashable {
+        let at: Date
+        let cm: Double
     }
 
     struct Peak {
@@ -42,6 +59,9 @@ final class ChartViewModel {
     /// 今から 9 時間の釣れ率
     private(set) var points: [ScorePoint] = []
     private(set) var peak: Peak?
+    /// 今から 9 時間の潮位（10 分おき）と、線の縦の範囲
+    private(set) var tide: [TideSample] = []
+    private(set) var tideRange: ClosedRange<Double> = 0...200
     private(set) var scoreNow = 0
     private(set) var advice = ""
     private(set) var lostCount = 0
@@ -56,6 +76,7 @@ final class ChartViewModel {
     @ObservationIgnored private weak var services: AppServices?
     @ObservationIgnored private var coordinate = SampleData.hakodate
     @ObservationIgnored private var snapshotKey = ""
+    @ObservationIgnored private var tideKey = ""
 
     /// 表示中の時刻の釣れ率
     var shownScore: Int {
@@ -78,6 +99,8 @@ final class ChartViewModel {
         } else {
             peak = nil
         }
+
+        updateTide(services: services)
 
         // 図：その釣り場（か現在地）を写している海図。無ければ Apple の地図
         let catalog = PortChartCatalog.bundled()
@@ -124,21 +147,54 @@ final class ChartViewModel {
         let t = scrub ?? now
         let env = services.environment.scoreSnapshot(at: t, coordinate: coordinate)
         var c = Conditions()
-        if let rate = env.tideRateCmPerHour {
-            let direction = abs(rate) < 2 ? "潮止まり" : (rate > 0 ? "上げ" : "下げ")
-            c.tide = env.tideLevelCm.map { "\(direction) \(Int($0.rounded()))cm" } ?? direction
-        }
-        if let w = env.windSpeedMS {
-            c.wind = (env.windDirectionDeg.map { CastPredictor.compassName($0) + " " } ?? "") + "\(Int(w.rounded()))m"
-        }
+        if let level = env.tideLevelCm { c.tide = "\(Int(level.rounded()))cm" }
+        if let rate = env.tideRateCmPerHour { c.tideState = abs(rate) < 2 ? .slack : (rate > 0 ? .rising : .falling) }
+        if let w = env.windSpeedMS { c.wind = "\(Int(w.rounded()))m" }
         if let h = env.waveHeightM { c.wave = String(format: "%.1fm", h) }
         if let a = env.airTemperatureC { c.temp = "\(Int(a.rounded()))°" }
+        if let chance = env.precipitationChance { c.rain = "\(Int((chance * 100).rounded()))%" }
+        if env.conditionCode != nil || env.precipitationChance != nil {
+            c.weatherSymbol = Self.weatherSymbol(env.conditionCode, at: t, sunrise: env.sunriseAt, sunset: env.sunsetAt)
+        }
         c.windFromDeg = env.windDirectionDeg
         c.windSpeedMS = env.windSpeedMS
+        c.windName = env.windDirectionDeg.map { CastPredictor.compassName($0) }
         conditions = c
         zones = CastPredictor.predict(.init(chart: frame, user: user, windFromDeg: env.windDirectionDeg, windSpeedMS: env.windSpeedMS,
                                             tideRateCmPerHour: env.tideRateCmPerHour, pastCatches: past, todayCatches: today.map(\.coordinate)))
         advice = makeAdvice()
+    }
+
+    /// 天気の印。晴れ・晴れ時々曇りは、夜（日の入〜日の出）なら月にする
+    static func weatherSymbol(_ code: String?, at date: Date, sunrise: Date?, sunset: Date?) -> String {
+        var night = false
+        if let sunrise, let sunset { night = date < sunrise || date > sunset }
+        switch code ?? "" {
+        case "clear", "mostlyClear": return night ? "moon.stars.fill" : "sun.max.fill"
+        case "partlyCloudy": return night ? "cloud.moon.fill" : "cloud.sun.fill"
+        default: return HomeViewModel.weatherSymbol(code)
+        }
+    }
+
+    /// 今から 9 時間の潮位。5 分ごとに作り直す（調和推算を 55 回。軽い）
+    private func updateTide(services: AppServices) {
+        let key = String(format: "%.3f,%.3f,%d", coordinate.latitude, coordinate.longitude, Int(now.timeIntervalSince1970 / 300))
+        guard key != tideKey else { return }
+        tideKey = key
+        guard let station = services.environment.tideStation(near: coordinate) else { tide = []; return }
+        let engine = TideEngine(station: station)
+        let start = now
+        let samples = stride(from: 0.0, through: Self.horizon, by: 600).map { offset -> TideSample in
+            let t = start.addingTimeInterval(offset)
+            return TideSample(at: t, cm: engine.level(at: t))
+        }
+        tide = samples
+        // 縦の範囲：この 9 時間の上下を中心に、1 か月の幅の半分より狭くはしない（小潮の日は線が低く平らに見える＝潮の高さが伝わる）
+        let lo = samples.map(\.cm).min() ?? 0, hi = samples.map(\.cm).max() ?? 200
+        let month = services.homeModel.tideRangeCm
+        let span = max((hi - lo) * 1.15, (month.upperBound - month.lowerBound) * 0.5, 20)
+        let mid = (hi + lo) / 2
+        tideRange = (mid - span / 2)...(mid + span / 2)
     }
 
     private func makeAdvice() -> String {

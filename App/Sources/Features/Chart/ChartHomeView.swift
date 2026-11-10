@@ -144,24 +144,48 @@ struct ChartHomeView: View {
         return String(format: "%d:%02d:%02d", s / 3600, (s / 60) % 60, s % 60)
     }
 
-    /// 潮・風・波・気温（なぞっている間はその時刻の値）
+    /// 潮・風・波・気温・天気（なぞっている間はその時刻の値）。上げ下げと風向は文字でなくマークで出す
     private var metrics: some View {
         let c = vm.conditions
-        return HStack(spacing: 0) {
-            metric("潮", c.tide)
-            metric("風", c.wind)
-            metric("波", c.wave)
-            metric("気温", c.temp)
+        let tideWord: String
+        switch c.tideState {
+        case .rising: tideWord = "上げ"
+        case .falling: tideWord = "下げ"
+        case .slack: tideWord = "潮止まり"
+        case nil: tideWord = ""
         }
-        .frame(height: 22)
+        return HStack(spacing: 0) {
+            metric("潮", c.tide) { ChartTideMark(state: c.tideState) }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("潮 \(tideWord) \(c.tide)")
+            Spacer(minLength: 4)
+            metric("風", c.wind) { ChartWindMark(fromDeg: c.windFromDeg) }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("風 " + (c.windName.map { $0 + "から " } ?? "") + c.wind)
+            Spacer(minLength: 4)
+            metric("波", c.wave) { EmptyView() }
+            Spacer(minLength: 4)
+            metric("気温", c.temp) { EmptyView() }
+            Spacer(minLength: 4)
+            metric("", c.rain) {
+                Image(systemName: c.weatherSymbol ?? "cloud.fill").font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(c.weatherSymbol == nil ? ChartStyle.gray2 : ChartStyle.white).frame(width: 20)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("降水確率 " + c.rain)
+        }
+        .frame(height: 24)
     }
 
-    private func metric(_ label: String, _ value: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 5) {
-            Text(label).font(.system(size: 10.5, weight: .medium)).foregroundStyle(ChartStyle.gray1)
-            Text(value).font(.system(size: 13, weight: .semibold)).foregroundStyle(ChartStyle.white).lineLimit(1).minimumScaleFactor(0.7)
+    private func metric<Mark: View>(_ label: String, _ value: String, @ViewBuilder mark: () -> Mark) -> some View {
+        HStack(alignment: .center, spacing: 4) {
+            if !label.isEmpty {
+                Text(label).font(.system(size: 10.5, weight: .medium)).foregroundStyle(ChartStyle.gray1)
+            }
+            mark()
+            Text(value).font(.system(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(ChartStyle.white).lineLimit(1)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .fixedSize()
     }
 
     // MARK: 釣れ率と予報
@@ -170,7 +194,7 @@ struct ChartHomeView: View {
     private var forecastRow: some View {
         HStack(alignment: .center, spacing: 14) {
             scoreBlock(size: 46).frame(width: 112, alignment: .leading)
-            ChartForecastStrip(points: vm.points, now: vm.now, horizon: ChartViewModel.horizon, extremes: home.tideExtremes, scrub: scrubBinding)
+            ChartForecastStrip(points: vm.points, tide: vm.tide, tideRange: vm.tideRange, now: vm.now, horizon: ChartViewModel.horizon, extremes: home.tideExtremes, scrub: scrubBinding)
         }
     }
 
@@ -229,8 +253,8 @@ struct ChartHomeView: View {
                     }
                     Spacer(minLength: 12)
                     metrics
-                    ChartForecastStrip(points: vm.points, now: vm.now, horizon: ChartViewModel.horizon, extremes: home.tideExtremes, scrub: scrubBinding)
-                        .frame(height: 96).padding(.top, 14)
+                    ChartForecastStrip(points: vm.points, tide: vm.tide, tideRange: vm.tideRange, now: vm.now, horizon: ChartViewModel.horizon, extremes: home.tideExtremes, scrub: scrubBinding)
+                        .frame(height: 150).padding(.top, 14)
                     Spacer(minLength: 12)
                     startOrb
                     Text("押すと釣行が始まり、この港の図が開きます").font(.system(size: 11.5, weight: .medium)).foregroundStyle(ChartStyle.gray2)
@@ -293,7 +317,7 @@ struct ChartHomeView: View {
                 .padding(.bottom, 6)
             }
             .frame(maxHeight: .infinity)
-            forecastRow.frame(height: 84).padding(.horizontal, 24).padding(.top, 2)
+            forecastRow.frame(height: 108).padding(.horizontal, 24).padding(.top, 2)
             actions.padding(.horizontal, 24).padding(.top, 8).padding(.bottom, 10)
         }
     }
