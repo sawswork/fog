@@ -1,7 +1,8 @@
 import SwiftUI
 import Core
 
-/// 相談役（F-53）：アプリの記録について聞く／店先の話を声で記録して地図のメモにする。
+/// 相談役（F-53 / F-65）：声か文字で、記録・操作（ロスト、リグ、開始・終了）、自分の記録への質問、次の一手、次の釣行の計画、
+/// 魚について、釣果情報の要約、釣行のまとめ。予報の質問と店先の話のメモはこれまでどおり。
 struct AssistantView: View {
     let home: HomeViewModel
     @Environment(AppServices.self) private var services
@@ -27,7 +28,17 @@ struct AssistantView: View {
                 ScrollView {
                     VStack(spacing: DS.Spacing.s) {
                         if assistant.messages.isEmpty {
-                            Text("文字か声で、質問も記録もそのまま。\n質問の例：明日の鹿部はどう？／先月の釣果は？\n記録の例：鹿部で先週ホッケが好調らしい（店の人の話をそのまま話してもよい）。場所ごとに整理して地図にメモを置きます")
+                            Text("""
+                                文字か声で、そのまま話しかけてください。
+                                ・記録する：「ロスト」「シンカー 14 グラムに替えた」「フック 1/0」「開始」「終了」
+                                ・自分の記録：「去年の 11 月、鹿部で何が釣れた？」「アイナメが一番釣れた潮は？」
+                                ・次の一手：「アタリがない」「次どうする？」
+                                ・計画：「今週末、朝だけ行ける。どこがいい？」
+                                ・魚：「これ持ち帰っていい？」「アイナメはどう食べる？」
+                                ・釣果情報：「今週の道南で釣れているものは？」
+                                ・まとめ：「今日のまとめ」（共有できます）
+                                ・予報：「明日の鹿部はどう？」　・店先の話：「鹿部で先週ホッケが好調らしい」→ 地図にメモ
+                                """)
                                 .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary).frame(maxWidth: .infinity, alignment: .leading)
                         }
                         ForEach(assistant.messages) { m in
@@ -40,6 +51,16 @@ struct AssistantView: View {
                                 if m.role == .assistant { Spacer(minLength: 40) }
                             }
                             .id(m.id)
+                            if let share = m.share {
+                                HStack {
+                                    ShareLink(item: share) {
+                                        Label("共有", systemImage: "square.and.arrow.up").font(DS.Font.caption).foregroundStyle(DS.Color.accent)
+                                            .padding(.horizontal, DS.Spacing.m).padding(.vertical, 6)
+                                            .background(DS.Color.accent.opacity(0.14), in: Capsule())
+                                    }
+                                    Spacer()
+                                }
+                            }
                         }
                         if assistant.isResponding || working {
                             HStack { ProgressView().tint(DS.Color.accent); Text(working ? "整理しています" : "考えています").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary); Spacer() }
@@ -55,6 +76,20 @@ struct AssistantView: View {
                     .frame(maxWidth: .infinity, alignment: .leading).lineLimit(3)
             }
             if let e = recorder.error { Text(e).font(DS.Font.caption).foregroundStyle(DS.Color.holiday) }
+            // よく使う話しかけ（タップでそのまま送る）
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: DS.Spacing.s) {
+                    ForEach(suggestions, id: \.self) { text in
+                        Button { submit(text) } label: {
+                            Text(text).font(DS.Font.caption).foregroundStyle(DS.Color.textPrimary)
+                                .padding(.horizontal, DS.Spacing.m).padding(.vertical, 7)
+                                .background(DS.Color.surface, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(assistant.isResponding || working)
+                    }
+                }
+            }
             HStack(spacing: DS.Spacing.s) {
                 TextField("質問、または記録したい話", text: $input, axis: .vertical)
                     .lineLimit(1...4)
@@ -78,6 +113,12 @@ struct AssistantView: View {
         .onDisappear { if recorder.isRecording { recorder.stop() } }
     }
 
+    /// 釣行中は記録と次の一手を先に、そうでなければ計画と記録への質問を先に
+    private var suggestions: [String] {
+        home.isRecording ? ["次どうする？", "ロスト", "今日のまとめ", "これ持ち帰っていい？", "今年の記録は？"]
+                         : ["週末どこがいい？", "今年の記録は？", "今週の釣果情報", "前回のまとめ", "明日はどう？"]
+    }
+
     private func toggleRecording() {
         if recorder.isRecording {
             recorder.stop()
@@ -95,6 +136,16 @@ struct AssistantView: View {
         let assistant = services.assistant
         working = true
         Task {
+            // まず決まった言葉で振り分ける（命令・自分の記録・次の一手・計画・魚・釣果情報・まとめ）。数字はアプリが計算する
+            let routed = AssistantActions.route(t)
+            if routed != .other {
+                assistant.append(user: t)
+                if let reply = await AssistantActions.run(routed, text: t, services: services, home: home) {
+                    assistant.append(assistant: reply.openCamera ? "撮影は、撮影タブか海図の画面の撮影ボタンから開けます" : reply.text, share: reply.share)
+                }
+                working = false
+                return
+            }
             // 質問か記録かは内容から判定する（タブは無い）
             let intent = await assistant.classify(t)
             if intent == .question {

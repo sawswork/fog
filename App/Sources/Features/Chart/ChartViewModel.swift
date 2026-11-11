@@ -221,6 +221,11 @@ final class ChartViewModel {
     }
 
     private func makeAdvice() -> String {
+        // 釣行中は「次の一手」（F-65）を先に：山が近い・アタリが無い・ロストが続く・風が強い、など優先度の高い提案があればそれを出す
+        if scrub == nil, let services, services.homeModel.isRecording,
+           let top = SessionAdvisor.advise(AssistantActions.advisorInput(services: services, home: services.homeModel, now: now)).first, top.priority >= 2 {
+            return top.text
+        }
         guard let top = zones.first else {
             return isIllustrated ? "釣果が増えると、投げる場所の見立てが出ます" : "この場所の釣果が増えると、投げる場所の見立てが出ます"
         }
