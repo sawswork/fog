@@ -67,6 +67,14 @@ final class AssistantTests: XCTestCase {
         XCTAssertEqual(AssistantRouter.route("鹿部で先週ホッケが好調らしい", species: species), .other)
     }
 
+    func testAnswerNumbersMustComeFromFacts() {
+        let facts = "去年・11月：2 釣行で 3 尾\n魚種：アイナメ 2 尾（最大 42 cm）"
+        XCTAssertEqual(AnswerCheck.numbers(in: "最大は４２cm、3.5g を 2 回"), ["42", "3.5", "2"])
+        XCTAssertTrue(AnswerCheck.isGrounded("去年の11月は 2 回の釣行で 3 尾。最大はアイナメ 42 cm でした", facts: facts))
+        XCTAssertFalse(AnswerCheck.isGrounded("アイナメが 5 尾釣れました", facts: facts))          // 5 は事実に無い
+        XCTAssertTrue(AnswerCheck.isGrounded("記録がありません", facts: facts))
+    }
+
     // MARK: 自分の記録
 
     private func sampleSessions(spotA: Spot, spotB: Spot, rig14: UUID, rig21: UUID) -> [Session] {

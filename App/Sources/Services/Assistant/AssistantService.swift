@@ -15,6 +15,8 @@ final class AssistantService {
         let id = UUID()
         let role: Role
         var text: String
+        /// 共有できる文（釣行のまとめなど）。あれば吹き出しの下に共有ボタンを出す
+        var share: String? = nil
     }
 
     private(set) var messages: [Message] = []
@@ -152,7 +154,31 @@ final class AssistantService {
         return t.hasSuffix("？") || t.hasSuffix("?") ? .question : (t.count > 25 ? .record : .question)
     }
 
-    func append(assistant text: String) { messages.append(Message(role: .assistant, text: text)) }
+    func append(assistant text: String, share: String? = nil) { messages.append(Message(role: .assistant, text: text, share: share)) }
+
+    /// アプリが計算した「事実の行」から、質問に合うところを選んで短く答えさせる（F-65）。
+    /// 言語モデルが使えない・失敗した・事実に無い数字を言ったときは、`fallback`（事実の行そのまま）を返す。数字は作らせない
+    func rephrase(question: String, facts: String, fallback: String) async -> String {
+        #if canImport(FoundationModels)
+        guard unavailableReason == nil else { return fallback }
+        let instructions = """
+        あなたは釣りアプリ「Fog」の相談役です。【事実】はアプリが記録から計算した結果です。【質問】に、【事実】に書いてあることだけを使って日本語で短く（3 文以内）答えます。
+        数字・魚の名前・場所・日付は【事実】のものをそのまま使い、足したり変えたりしません。【事実】に無いことは「記録にありません」と言います。前置きや挨拶は要りません。
+        """
+        isResponding = true
+        defer { isResponding = false }
+        do {
+            let session = LanguageModelSession(instructions: instructions)
+            let response = try await session.respond(to: "【事実】\n\(facts)\n\n【質問】\n\(question)")
+            let text = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty, AnswerCheck.isGrounded(text, facts: facts + "\n" + question) { return text }
+            Self.log.notice("rephrase rejected (empty or ungrounded numbers)")
+        } catch {
+            Self.log.notice("rephrase failed: \(error.localizedDescription, privacy: .public)")
+        }
+        #endif
+        return fallback
+    }
     func append(user text: String) { messages.append(Message(role: .user, text: text)) }
 }
 

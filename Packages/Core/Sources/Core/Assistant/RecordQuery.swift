@@ -28,7 +28,7 @@ public struct RecordFacts: Hashable, Sendable {
 }
 
 public enum RecordQuery {
-    static let tokyo = TimeZone(identifier: "Asia/Tokyo") ?? .current
+    public static let tokyo = TimeZone(identifier: "Asia/Tokyo") ?? .current
 
     /// 質問から絞り込みを読む。`species` は「呼び名（別名も）→ 標準和名」
     public static func filter(for question: String, spots: [Spot], species: [String: String], now: Date, timeZone: TimeZone = tokyo) -> RecordFilter {

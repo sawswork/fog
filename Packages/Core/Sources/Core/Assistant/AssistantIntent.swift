@@ -63,3 +63,26 @@ public enum AssistantRouter {
         return prev.isNumber && prev.isASCII
     }
 }
+
+/// 言語モデルの答えの検査（F-65）。答えに出てくる数字が、渡した事実か質問の中にあるかを見る。
+/// 無い数字が 1 つでもあれば「作った数字」とみなし、呼び出し側は事実の行をそのまま出す
+public enum AnswerCheck {
+    public static func numbers(in text: String) -> [String] {
+        var out: [String] = [], current = ""
+        for c in RigParts.halfWidth(text) {
+            if c.isNumber, c.isASCII { current.append(c) }
+            else if c == ".", !current.isEmpty, !current.contains(".") { current.append(c) }
+            else {
+                if !current.isEmpty { out.append(current.hasSuffix(".") ? String(current.dropLast()) : current) }
+                current = ""
+            }
+        }
+        if !current.isEmpty { out.append(current.hasSuffix(".") ? String(current.dropLast()) : current) }
+        return out
+    }
+
+    public static func isGrounded(_ answer: String, facts: String) -> Bool {
+        let known = Set(numbers(in: facts))
+        return numbers(in: answer).allSatisfy { known.contains($0) }
+    }
+}
