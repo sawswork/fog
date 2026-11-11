@@ -7,6 +7,8 @@ struct ChartMapView: View {
     let model: ChartViewModel
     /// いま記録した釣果（波紋を出す）
     var newestCatchID: UUID?
+    /// 枠で囲むテーマ：上のぼかしを入れない（枠の中いっぱいに図を見せる）
+    var framed = false
 
     var body: some View {
         GeometryReader { geo in
@@ -25,7 +27,7 @@ struct ChartMapView: View {
                     todayPins(frame: frame, width: size.width, height: imageHeight, offsetY: offsetY)
                 }
                 VStack(spacing: 0) {
-                    LinearGradient(colors: [ChartStyle.bg, ChartStyle.bg.opacity(0)], startPoint: .top, endPoint: .bottom).frame(height: 44)
+                    LinearGradient(colors: [ChartStyle.bg.opacity(framed ? 0.35 : 1), ChartStyle.bg.opacity(0)], startPoint: .top, endPoint: .bottom).frame(height: framed ? 30 : 44)
                     Spacer(minLength: 0)
                     LinearGradient(colors: [ChartStyle.bg.opacity(0), ChartStyle.bg], startPoint: .top, endPoint: .bottom).frame(height: 120)
                 }
@@ -84,7 +86,7 @@ struct ChartMapView: View {
                 }
                 .position(p)
                 if let cm = pin.lengthCm {
-                    Text("\(Int(cm.rounded()))").font(.system(size: 10, weight: .bold)).foregroundStyle(ChartStyle.white)
+                    Text("\(Int(cm.rounded()))").font(ChartStyle.font(10, .bold)).foregroundStyle(ChartStyle.white)
                         .shadow(color: .black.opacity(0.8), radius: 2, y: 1)
                         .position(x: p.x + 14, y: p.y)
                 }
@@ -111,9 +113,9 @@ struct ChartMapView: View {
         let marks = ["①", "②", "③", "④", "⑤"]
         let mark = zone.rank >= 1 && zone.rank <= marks.count ? marks[zone.rank - 1] : "\(zone.rank)"
         return VStack(alignment: .leading, spacing: 1) {
-            Text("\(mark) \(zone.percent)%").font(.system(size: zone.rank == 1 ? 14 : 12, weight: .bold)).foregroundStyle(ChartStyle.orange)
+            Text("\(mark) \(zone.percent)%").font(ChartStyle.font(zone.rank == 1 ? 14 : 12, .bold)).foregroundStyle(ChartStyle.orange)
             if zone.rank == 1, let d = zone.distanceM, let b = zone.bearingDeg, d < 500 {
-                Text("\(CastPredictor.compassName(b)) · \(Int(d.rounded())) m").font(.system(size: 10.5, weight: .medium)).foregroundStyle(ChartStyle.white)
+                Text("\(CastPredictor.compassName(b)) · \(Int(d.rounded())) m").font(ChartStyle.font(10.5, .medium)).foregroundStyle(ChartStyle.white)
             }
         }
         .shadow(color: .black.opacity(0.85), radius: 2, y: 1)
@@ -146,7 +148,7 @@ struct ChartMapView: View {
             }
             .position(p)
             .allowsHitTesting(false)
-            Text("現在地").font(.system(size: 10, weight: .semibold)).foregroundStyle(ChartStyle.white)
+            Text("現在地").font(ChartStyle.font(10, .semibold)).foregroundStyle(ChartStyle.white)
                 .shadow(color: .black.opacity(0.85), radius: 2, y: 1)
                 .position(x: p.x, y: p.y + 20)
                 .allowsHitTesting(false)
@@ -159,12 +161,12 @@ struct ChartMapView: View {
         let from = model.conditions.windFromDeg
         return HStack(spacing: 6) {
             VStack(alignment: .trailing, spacing: 1) {
-                Text("風").font(.system(size: 10, weight: .medium)).foregroundStyle(ChartStyle.gray1)
-                Text(model.conditions.wind).font(.system(size: 12, weight: .bold)).foregroundStyle(ChartStyle.white)
+                Text("風").font(ChartStyle.font(10, .medium)).foregroundStyle(ChartStyle.gray1)
+                Text(model.conditions.wind).font(ChartStyle.font(12, .bold)).foregroundStyle(ChartStyle.white)
             }
             .shadow(color: .black.opacity(0.85), radius: 2, y: 1)
             ZStack {
-                if let dial = ChartAssets.ui("dial.png") {
+                if let dial = ChartAssets.ui("dial") {
                     Image(uiImage: dial).resizable().scaledToFit()
                 } else {
                     Circle().fill(ChartStyle.panel)
@@ -269,5 +271,30 @@ struct ChartWindField: View {
     static func noise(_ i: Int, _ k: Int) -> CGFloat {
         let x = sin(Double(i * 127 + k * 311) * 12.9898) * 43758.5453
         return CGFloat(x - floor(x))
+    }
+}
+
+/// 額のような枠：外の線と、四隅の角飾り（テーマの `chart_corner`。左上向きの絵を鏡映しで四隅へ）。
+/// 地図とメニューの札に使う
+struct ChartFrame: View {
+    var radius: CGFloat = 8
+    var cornerSize: CGFloat = 46
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: radius, style: .continuous).strokeBorder(ChartStyle.border, lineWidth: 1)
+            if let corner = ChartAssets.ui("corner") {
+                GeometryReader { geo in
+                    let s = cornerSize, inset: CGFloat = 5
+                    ForEach(0..<4, id: \.self) { i in
+                        Image(uiImage: corner).resizable().scaledToFit().frame(width: s, height: s)
+                            .scaleEffect(x: i % 2 == 0 ? 1 : -1, y: i < 2 ? 1 : -1)
+                            .position(x: i % 2 == 0 ? s / 2 + inset : geo.size.width - s / 2 - inset,
+                                      y: i < 2 ? s / 2 + inset : geo.size.height - s / 2 - inset)
+                    }
+                }
+            }
+        }
+        .allowsHitTesting(false)
     }
 }

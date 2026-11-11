@@ -246,6 +246,7 @@ final class ThemeStore {
             UserDefaults.standard.set(theme.rawValue, forKey: Self.key)
             ThemeAssets.clear()
             palette = theme.palette; fontDesign = theme.fontDesign; numberDesign = theme.numberDesign
+            ChartStyle.skin = ChartSkinValues(theme: theme)
         }
     }
     /// `DS.Color` / `DS.Font` が毎回読む値。観測の対象から外して（切替は `RootTabView` の `.id(theme)` で全画面を作り直す）、
@@ -258,6 +259,7 @@ final class ThemeStore {
         let t = AppTheme.find(id: UserDefaults.standard.string(forKey: Self.key) ?? "") ?? .dark
         theme = t
         palette = t.palette; fontDesign = t.fontDesign; numberDesign = t.numberDesign
+        ChartStyle.skin = ChartSkinValues(theme: t)
     }
 }
 

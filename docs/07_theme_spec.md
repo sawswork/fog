@@ -110,3 +110,44 @@
 
 知らない `type` は無視される（古いビルドでも落ちない）。`rect` の範囲外は 0〜1 に収められる。読めない `theme.json` のフォルダはテーマとして出ない。
 `App/Resources/Themes/forest/` が最小の例。
+
+## 4. 海図の 1 画面の着せ替え `chart`（2026-11-11、F-63）
+
+`"screen": "chart"` のテーマは、`chart` で海図の画面の色・書体・配置を変えられる（省略は標準の海図：濃紺にオレンジ）。`App/Resources/Themes/sylphie_lake/` が例。
+
+```json
+"screen": "chart",
+"chart": {
+  "colors": { "background": "#0A1310", "text": "#F7F0E1", "sub": "#C9D0C0", "dim": "#8C9A8A",
+              "accent": "#F4B860", "tide": "#9FD0F0", "panel": "#12221B", "border": "#D8D2BC8C", "onAccent": "#1F1407" },
+  "font": "serif", "numberFont": "serif",
+  "idleNumberSize": 86, "idleFaceGap": 0.2, "idleTopScrim": 0.42, "idleBottomScrim": 0.9,
+  "idleEffects": ["fireflies", "sparkles"],
+  "mapFrame": true, "menu": "panel", "glow": 0.5
+}
+```
+
+| キー | 意味 |
+| --- | --- |
+| `colors` | `background`（地）`text` `sub` `dim`（文字の 3 段）`accent`（押すところ・釣れる時間・投げる場所）`tide`（潮）`panel`（札やボタンの面）`border`（輪郭線。書くとボタンが二重の縁になる）`onAccent`（強調色の面に載せる文字） |
+| `font` / `numberFont` | `default` / `serif` / `rounded` / `monospaced`。`serif` でも 12 pt より小さい字は標準の書体のまま（読みやすさ） |
+| `idleNumberSize` | 待機中の釣れ率の数字（pt、60〜140、省略 124） |
+| `idleFaceGap` | 待機中、数字の下に空ける高さ（画面の高さに対する割合、0〜0.4）。背景のキャラクターの顔を見せる。書くと、数字は上へ寄り、次の山と数字の行は半透明の札に載る |
+| `idleTopScrim` / `idleBottomScrim` | 背景の上・下に敷く幕の濃さ（0〜1） |
+| `idleEffects` | 背景に重ねる効果：`fireflies` `sparkles` `leaves` `bubbles`（色は `accent`） |
+| `mapFrame` | 釣行中の地図を額（外の線＋四隅の `chart_corner`）で囲む |
+| `menu` | `panel` で、右上のメニューがテーマの色と印（`chart_menu_*`）の札になる。省略は iOS の一覧 |
+| `glow` | 開始・撮影ボタンのまわりの光の強さ（0〜1、省略 1） |
+
+画像（テーマのフォルダ。無いものは標準の海図の素材）：
+
+| ファイル | 内容 |
+| --- | --- |
+| `chart_bg_idle` | 待機中の背景（縦長。画面いっぱいに敷く） |
+| `chart_orb_start` / `chart_orb_shutter` | 開始ボタン（中央は空ける。「開始」はアプリが書く）／撮影ボタン。正方形・透過 |
+| `chart_dial` | 風向の計器の枠（針はアプリが描く。上が北） |
+| `chart_corner` | 枠の角飾り。**左上向き**の絵を 1 枚（アプリが鏡映しで四隅に置く）。透過 |
+| `chart_menu_log` `_guide` `_spots` `_feed` `_assistant` `_settings` | メニューの印。正方形・透過 |
+
+「≡」から開くログ・図鑑・設定などは、これまでどおり `colors` と `bg_log` `bg_guide` `bg_sheet` などを使う。
+

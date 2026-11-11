@@ -26,6 +26,52 @@ public struct ThemeSpec: Codable, Hashable, Sendable {
     public var screen: String?
     /// 海図の 1 画面のテーマか
     public var isChartScreen: Bool { screen == "chart" }
+    /// 海図の 1 画面の見た目（`screen` が `chart` のとき。省略は標準の海図）
+    public var chart: ChartSkin?
+
+    /// 海図の 1 画面の着せ替え（F-63）。色・書体・待機中の配置・地図の枠・メニューの形。
+    /// 画像はテーマのフォルダに `chart_bg_idle` `chart_orb_start` `chart_orb_shutter` `chart_dial` `chart_corner` `chart_menu_*` を置く（無ければ標準の海図の素材）
+    public struct ChartSkin: Codable, Hashable, Sendable {
+        /// 色（"#RRGGBB" / "#RRGGBBAA"）。キー：background / text / sub / dim / accent / tide / panel / border / onAccent
+        public var colors: [String: String]?
+        /// 文字と数字のデザイン：default / serif / rounded / monospaced
+        public var font: String?
+        public var numberFont: String?
+        /// 待機中の釣れ率の数字の大きさ（pt。省略 124、60〜140）
+        public var idleNumberSize: Double?
+        /// 待機中、数字の下に空ける高さ（画面の高さに対する割合 0〜0.4）。背景のキャラクターの顔を見せるために使う。省略は均等に配置
+        public var idleFaceGap: Double?
+        /// 待機中の背景の上と下に敷く幕の濃さ（0〜1）。省略は上 0・下 1
+        public var idleTopScrim: Double?
+        public var idleBottomScrim: Double?
+        /// 待機中の背景に重ねる効果：fireflies / sparkles / leaves / bubbles
+        public var idleEffects: [String]?
+        /// 釣行中の地図に枠と角飾り（`chart_corner`）を付ける
+        public var mapFrame: Bool?
+        /// メニュー：省略は標準の一覧、"panel" はテーマの色と印（`chart_menu_*`）のパネル
+        public var menu: String?
+        /// 開始・撮影ボタンのまわりの光の強さ（0〜1。省略 1）。金や白の強調色は弱めると濁らない
+        public var glow: Double?
+
+        public init(colors: [String: String]? = nil, font: String? = nil, numberFont: String? = nil, idleNumberSize: Double? = nil, idleFaceGap: Double? = nil,
+                    idleTopScrim: Double? = nil, idleBottomScrim: Double? = nil, idleEffects: [String]? = nil, mapFrame: Bool? = nil, menu: String? = nil, glow: Double? = nil) {
+            self.colors = colors; self.font = font; self.numberFont = numberFont; self.idleNumberSize = idleNumberSize; self.idleFaceGap = idleFaceGap
+            self.idleTopScrim = idleTopScrim; self.idleBottomScrim = idleBottomScrim; self.idleEffects = idleEffects; self.mapFrame = mapFrame; self.menu = menu; self.glow = glow
+        }
+
+        /// 読めた色だけ
+        public var parsedColors: [String: HexColor] {
+            var out: [String: HexColor] = [:]
+            for (k, v) in colors ?? [:] { if let c = HexColor(v) { out[k] = c } }
+            return out
+        }
+        public var resolvedIdleNumberSize: Double { min(140, max(60, idleNumberSize ?? 124)) }
+        public var resolvedIdleFaceGap: Double? { idleFaceGap.map { min(0.4, max(0, $0)) } }
+        public var resolvedIdleTopScrim: Double { min(1, max(0, idleTopScrim ?? 0)) }
+        public var resolvedIdleBottomScrim: Double { min(1, max(0, idleBottomScrim ?? 1)) }
+        public var usesMenuPanel: Bool { menu == "panel" }
+        public var resolvedGlow: Double { min(1, max(0, glow ?? 1)) }
+    }
 
     public init(version: Int = 1, label: String, base: String? = nil, fallbackFolder: String? = nil, light: Bool? = nil, fonts: Fonts? = nil,
                 colors: [String: String]? = nil, home: HomeLayout? = nil) {
@@ -77,7 +123,7 @@ public struct ThemeSpec: Codable, Hashable, Sendable {
         public init(text: String? = nil, number: String? = nil) { self.text = text; self.number = number }
     }
 
-    enum CodingKeys: String, CodingKey { case version, label, base, fallbackFolder, light, fonts, colors, home, style, screen }
+    enum CodingKeys: String, CodingKey { case version, label, base, fallbackFolder, light, fonts, colors, home, style, screen, chart }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -91,6 +137,7 @@ public struct ThemeSpec: Codable, Hashable, Sendable {
         home = try c.decodeIfPresent(HomeLayout.self, forKey: .home)
         style = try c.decodeIfPresent(Style.self, forKey: .style)
         screen = try c.decodeIfPresent(String.self, forKey: .screen)
+        chart = try c.decodeIfPresent(ChartSkin.self, forKey: .chart)
     }
 
     public static func parse(_ data: Data) throws -> ThemeSpec {

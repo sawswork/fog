@@ -31,6 +31,7 @@ struct ChartHomeView: View {
     @State private var knownCatchIDs: Set<UUID>?
     @State private var endProgress: CGFloat = 0
     @State private var orbPulse = false
+    @State private var menuOpen = false
 
     private var home: HomeViewModel { services.homeModel }
     private var scrubBinding: Binding<Date?> { Binding(get: { vm.scrub }, set: { vm.scrub = $0 }) }
@@ -40,6 +41,7 @@ struct ChartHomeView: View {
             ChartStyle.bg.ignoresSafeArea()
             if home.isRecording { recording } else { idle }
             if let note { noteView(note) }
+            if menuOpen { menuPanel.transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .topTrailing))) }
         }
         .preferredColorScheme(.dark)
         .onAppear {
@@ -106,8 +108,8 @@ struct ChartHomeView: View {
         HStack(alignment: .center, spacing: 6) {
             Button { showSpots = true } label: {
                 HStack(spacing: 5) {
-                    Text(home.spot?.name ?? "現在地").font(.system(size: 20, weight: .bold)).foregroundStyle(ChartStyle.white).lineLimit(1)
-                    Image(systemName: "chevron.right").font(.system(size: 12, weight: .bold)).foregroundStyle(ChartStyle.gray2)
+                    Text(home.spot?.name ?? "現在地").font(ChartStyle.font(20, .bold)).foregroundStyle(ChartStyle.white).lineLimit(1)
+                    Image(systemName: "chevron.right").font(ChartStyle.font(12, .bold)).foregroundStyle(ChartStyle.gray2)
                 }
             }
             .buttonStyle(.plain)
@@ -116,7 +118,7 @@ struct ChartHomeView: View {
                 Circle().fill(ChartStyle.orange).frame(width: 8, height: 8)
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     Text(Self.elapsed(from: live.startedAt, to: context.date))
-                        .font(.system(size: 17, weight: .semibold)).monospacedDigit().foregroundStyle(ChartStyle.white)
+                        .font(ChartStyle.number(17, .semibold)).monospacedDigit().foregroundStyle(ChartStyle.white)
                 }
             }
             menu
@@ -124,19 +126,75 @@ struct ChartHomeView: View {
         .frame(height: 40)
     }
 
+    private static let menuItems: [(item: MenuItem, title: String, symbol: String)] = [
+        (.log, "ログ", "list.bullet.rectangle"), (.guide, "図鑑", "book"), (.spots, "釣り場の地図", "map"),
+        (.feed, "釣果情報", "newspaper"), (.assistant, "相談", "bubble.left.and.text.bubble.right"), (.settings, "設定", "gearshape"),
+    ]
+
+    /// 右上のメニュー。標準は iOS の一覧、着せ替え（`chart.menu: "panel"`）はテーマの色と印のパネル
+    @ViewBuilder
     private var menu: some View {
-        Menu {
-            Button { sheet = .log } label: { Label("ログ", systemImage: "list.bullet.rectangle") }
-            Button { sheet = .guide } label: { Label("図鑑", systemImage: "book") }
-            Button { sheet = .spots } label: { Label("釣り場の地図", systemImage: "map") }
-            Button { sheet = .feed } label: { Label("釣果情報", systemImage: "newspaper") }
-            Button { sheet = .assistant } label: { Label("相談", systemImage: "bubble.left.and.text.bubble.right") }
-            Button { sheet = .settings } label: { Label("設定", systemImage: "gearshape") }
-        } label: {
-            Image(systemName: "line.3.horizontal").font(.system(size: 19, weight: .semibold)).foregroundStyle(ChartStyle.gray1)
+        if ChartStyle.skin.menuPanel {
+            Button { withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) { menuOpen.toggle() } } label: {
+                ZStack {
+                    Circle().fill(ChartStyle.panel.opacity(0.62))
+                    Circle().strokeBorder(ChartStyle.border, lineWidth: 1)
+                    Image(systemName: menuOpen ? "xmark" : "line.3.horizontal").font(ChartStyle.font(14, .bold)).foregroundStyle(ChartStyle.white)
+                }
+                .frame(width: 36, height: 36)
                 .frame(width: 40, height: 40).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("メニュー")
+        } else {
+            Menu {
+                ForEach(Array(Self.menuItems.enumerated()), id: \.offset) { _, entry in
+                    Button { sheet = entry.item } label: { Label(entry.title, systemImage: entry.symbol) }
+                }
+            } label: {
+                Image(systemName: "line.3.horizontal").font(ChartStyle.font(19, .semibold)).foregroundStyle(ChartStyle.gray1)
+                    .frame(width: 40, height: 40).contentShape(Rectangle())
+            }
+            .accessibilityLabel("メニュー")
         }
-        .accessibilityLabel("メニュー")
+    }
+
+    /// テーマの形のメニュー：右上から開く札。外を触ると閉じる
+    private var menuPanel: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.opacity(0.32).ignoresSafeArea()
+                .onTapGesture { withAnimation(.easeOut(duration: 0.18)) { menuOpen = false } }
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(Self.menuItems.enumerated()), id: \.offset) { index, entry in
+                    Button {
+                        menuOpen = false
+                        sheet = entry.item
+                    } label: {
+                        HStack(spacing: 12) {
+                            if let icon = ChartAssets.ui("menu_" + entry.item.rawValue) {
+                                Image(uiImage: icon).resizable().scaledToFit().frame(width: 36, height: 36)
+                            } else {
+                                Image(systemName: entry.symbol).font(ChartStyle.font(16, .semibold)).foregroundStyle(ChartStyle.orange).frame(width: 36, height: 36)
+                            }
+                            Text(entry.title).font(ChartStyle.font(15.5, .semibold)).foregroundStyle(ChartStyle.white)
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.right").font(ChartStyle.font(10.5, .bold)).foregroundStyle(ChartStyle.gray2)
+                        }
+                        .padding(.horizontal, 14).frame(height: 52).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    if index < Self.menuItems.count - 1 {
+                        Rectangle().fill(ChartStyle.border.opacity(0.4)).frame(height: 0.5).padding(.leading, 62).padding(.trailing, 14)
+                    }
+                }
+            }
+            .padding(.vertical, 9)
+            .frame(width: 228)
+            .background(ChartStyle.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(ChartFrame(radius: 10, cornerSize: 28))
+            .shadow(color: .black.opacity(0.5), radius: 18, y: 8)
+            .padding(.trailing, 20).padding(.top, 46)
+        }
     }
 
     static func elapsed(from start: Date, to now: Date) -> String {
@@ -168,7 +226,7 @@ struct ChartHomeView: View {
             metric("気温", c.temp) { EmptyView() }
             Spacer(minLength: 4)
             metric("", c.rain) {
-                Image(systemName: c.weatherSymbol ?? "cloud.fill").font(.system(size: 13, weight: .semibold))
+                Image(systemName: c.weatherSymbol ?? "cloud.fill").font(ChartStyle.font(13, .semibold))
                     .foregroundStyle(c.weatherSymbol == nil ? ChartStyle.gray2 : ChartStyle.white).frame(width: 20)
             }
             .accessibilityElement(children: .ignore)
@@ -180,10 +238,10 @@ struct ChartHomeView: View {
     private func metric<Mark: View>(_ label: String, _ value: String, @ViewBuilder mark: () -> Mark) -> some View {
         HStack(alignment: .center, spacing: 4) {
             if !label.isEmpty {
-                Text(label).font(.system(size: 10.5, weight: .medium)).foregroundStyle(ChartStyle.gray1)
+                Text(label).font(ChartStyle.font(10.5, .medium)).foregroundStyle(ChartStyle.gray1)
             }
             mark()
-            Text(value).font(.system(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(ChartStyle.white).lineLimit(1)
+            Text(value).font(ChartStyle.font(13, .semibold)).monospacedDigit().foregroundStyle(ChartStyle.white).lineLimit(1)
         }
         .fixedSize()
     }
@@ -202,8 +260,8 @@ struct ChartHomeView: View {
         let scrubbing = vm.scrub != nil
         return VStack(alignment: .leading, spacing: 0) {
             Text(scrubbing ? JPFormat.hm(vm.scrub ?? vm.now) + " の釣れ率" : "いまの釣れ率")
-                .font(.system(size: 11, weight: .medium)).foregroundStyle(ChartStyle.gray1)
-            Text("\(vm.shownScore)").font(.system(size: size, weight: .bold)).monospacedDigit()
+                .font(ChartStyle.font(11, .medium)).foregroundStyle(ChartStyle.gray1)
+            Text("\(vm.shownScore)").font(ChartStyle.number(size, .bold)).monospacedDigit()
                 .foregroundStyle(scrubbing ? ChartStyle.orange : ChartStyle.white)
                 .contentTransition(.numericText())
             nextPeak
@@ -213,53 +271,83 @@ struct ChartHomeView: View {
     @ViewBuilder
     private var nextPeak: some View {
         if vm.scrub != nil {
-            Text("離すと いま に戻る").font(.system(size: 10.5, weight: .medium)).foregroundStyle(ChartStyle.gray2)
+            Text("離すと いま に戻る").font(ChartStyle.font(10.5, .medium)).foregroundStyle(ChartStyle.gray2)
         } else if let p = vm.peak {
             HStack(spacing: 4) {
                 Circle().fill(ChartStyle.orange).frame(width: 6, height: 6)
-                Text(JPFormat.hm(p.at) + " に").font(.system(size: 11.5, weight: .medium)).foregroundStyle(ChartStyle.gray1)
-                Text("\(p.score)").font(.system(size: 13, weight: .bold)).foregroundStyle(ChartStyle.orange)
+                Text(JPFormat.hm(p.at) + " に").font(ChartStyle.font(11.5, .medium)).foregroundStyle(ChartStyle.gray1)
+                Text("\(p.score)").font(ChartStyle.font(13, .bold)).foregroundStyle(ChartStyle.orange)
             }
         } else {
-            Text("いまが山").font(.system(size: 11.5, weight: .medium)).foregroundStyle(ChartStyle.gray1)
+            Text("いまが山").font(ChartStyle.font(11.5, .medium)).foregroundStyle(ChartStyle.gray1)
         }
     }
 
     // MARK: 待機（着いたら）
 
     private var idle: some View {
-        GeometryReader { geo in
+        let skin = ChartStyle.skin
+        return GeometryReader { geo in
+            let full = geo.size.height + geo.safeAreaInsets.top + geo.safeAreaInsets.bottom
             ZStack {
-                if let background = ChartAssets.ui("bg_idle.jpg") {
+                if let background = ChartAssets.ui("bg_idle") {
                     Image(uiImage: background).resizable().scaledToFill()
-                        .frame(width: geo.size.width, height: geo.size.height + geo.safeAreaInsets.top + geo.safeAreaInsets.bottom)
+                        .frame(width: geo.size.width, height: full)
                         .clipped().ignoresSafeArea()
-                        .overlay(ChartStyle.bg.opacity(0.25).ignoresSafeArea())
-                        .overlay(alignment: .bottom) {
-                            LinearGradient(colors: [ChartStyle.bg.opacity(0), ChartStyle.bg], startPoint: .top, endPoint: .bottom)
-                                .frame(height: geo.size.height * 0.4).ignoresSafeArea()
+                        .overlay(ChartStyle.bg.opacity(skin.idleDim).ignoresSafeArea())
+                        .overlay(alignment: .top) {
+                            // 上の幕：明るい空の上でも釣り場名と数字が読めるように
+                            LinearGradient(colors: [ChartStyle.bg.opacity(skin.idleTopScrim), ChartStyle.bg.opacity(0)], startPoint: .top, endPoint: .bottom)
+                                .frame(height: full * 0.36).ignoresSafeArea()
                         }
+                        .overlay(alignment: .bottom) {
+                            LinearGradient(stops: [.init(color: ChartStyle.bg.opacity(0), location: 0),
+                                                   .init(color: ChartStyle.bg.opacity(skin.idleBottomScrim * 0.82), location: 0.5),
+                                                   .init(color: ChartStyle.bg.opacity(skin.idleBottomScrim), location: 1)], startPoint: .top, endPoint: .bottom)
+                                .frame(height: full * (skin.idleFaceGap == nil ? 0.4 : 0.58)).ignoresSafeArea()
+                        }
+                }
+                ForEach(skin.idleEffects, id: \.self) { effect in
+                    HomeEffectField(kind: effect, count: effect == "fireflies" ? 16 : 10, color: ChartStyle.orange, speed: 0.8, amount: 0.8)
+                        .ignoresSafeArea().allowsHitTesting(false)
                 }
                 VStack(spacing: 0) {
                     topBar
-                    Spacer(minLength: 8)
+                    // 顔を見せるテーマ：数字は上へ寄せ、数字の下を空ける。標準は均等
+                    if skin.idleFaceGap == nil { Spacer(minLength: 8) } else { Color.clear.frame(height: 2) }
                     VStack(spacing: 2) {
                         Text(vm.scrub != nil ? JPFormat.hm(vm.scrub ?? vm.now) + " の釣れ率" : "いまの釣れ率")
-                            .font(.system(size: 12.5, weight: .medium)).foregroundStyle(ChartStyle.gray1)
-                        Text("\(vm.shownScore)").font(.system(size: 124, weight: .bold)).monospacedDigit()
+                            .font(ChartStyle.font(12.5, .medium)).foregroundStyle(skin.idleFaceGap == nil ? ChartStyle.gray1 : ChartStyle.white.opacity(0.9))
+                        Text("\(vm.shownScore)").font(ChartStyle.number(skin.idleNumberSize, .bold)).monospacedDigit()
                             .foregroundStyle(vm.scrub != nil ? ChartStyle.orange : ChartStyle.white)
                             .contentTransition(.numericText()).minimumScaleFactor(0.6).lineLimit(1)
-                        nextPeak
+                        if skin.idleFaceGap == nil {
+                            nextPeak
+                        } else {
+                            // 絵の上では、次の山を小さな札に入れて読めるようにする
+                            nextPeak.padding(.horizontal, 11).padding(.vertical, 4)
+                                .background(ChartStyle.panel.opacity(0.58), in: Capsule())
+                                .overlay(Capsule().strokeBorder(ChartStyle.border.opacity(0.7), lineWidth: 0.7))
+                        }
                     }
-                    Spacer(minLength: 12)
-                    metrics
+                    .shadow(color: ChartStyle.bg.opacity(skin.idleFaceGap == nil ? 0 : 0.55), radius: 8, y: 1)
+                    if let gap = skin.idleFaceGap { Spacer(minLength: full * gap) } else { Spacer(minLength: 12) }
+                    if skin.idleFaceGap == nil {
+                        metrics
+                    } else {
+                        // 絵の上では、数字の行を細い帯（半透明の面と縁）に載せる
+                        metrics.padding(.horizontal, 13).frame(height: 36)
+                            .background(ChartStyle.panel.opacity(0.6), in: Capsule())
+                            .overlay(Capsule().strokeBorder(ChartStyle.border.opacity(0.75), lineWidth: 0.8))
+                            .padding(.horizontal, -10)
+                    }
                     ChartForecastStrip(points: vm.points, tide: vm.tide, tideRange: vm.tideRange, now: vm.now, horizon: ChartViewModel.horizon, extremes: home.tideExtremes, scrub: scrubBinding)
                         .frame(height: 124).padding(.top, 14)
-                    Spacer(minLength: 12)
+                    if skin.idleFaceGap == nil { Spacer(minLength: 12) } else { Color.clear.frame(height: 12) }
                     startOrb
-                    Text("押すと釣行が始まり、この港の図が開きます").font(.system(size: 11.5, weight: .medium)).foregroundStyle(ChartStyle.gray2)
+                    Text("押すと釣行が始まり、この港の図が開きます").font(ChartStyle.font(11.5, .medium)).foregroundStyle(ChartStyle.gray2)
                         .padding(.top, 14)
-                    Spacer(minLength: 8)
+                    if skin.idleFaceGap == nil { Spacer(minLength: 8) } else { Color.clear.frame(height: 6) }
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 8)
@@ -278,14 +366,14 @@ struct ChartHomeView: View {
             }
         } label: {
             ZStack {
-                Circle().fill(RadialGradient(colors: [ChartStyle.orange.opacity(0.32), ChartStyle.orange.opacity(0)], center: .center, startRadius: 40, endRadius: 104))
+                Circle().fill(RadialGradient(colors: [ChartStyle.orange.opacity(0.32 * ChartStyle.skin.glow), ChartStyle.orange.opacity(0)], center: .center, startRadius: 40, endRadius: 104))
                     .frame(width: 208, height: 208).scaleEffect(orbPulse ? 1.05 : 0.95)
-                if let orb = ChartAssets.ui("orb_start.png") {
+                if let orb = ChartAssets.ui("orb_start") {
                     Image(uiImage: orb).resizable().scaledToFit().frame(width: 152, height: 152)
                 } else {
                     Circle().fill(ChartStyle.panel).frame(width: 140, height: 140).overlay(Circle().stroke(ChartStyle.orange, lineWidth: 2.5))
                 }
-                Text("開始").font(.system(size: 30, weight: .bold)).foregroundStyle(ChartStyle.white)
+                Text("開始").font(ChartStyle.font(30, .bold)).foregroundStyle(ChartStyle.white)
             }
             .frame(width: 168, height: 168)
             .opacity(busy ? 0.5 : 1)
@@ -303,31 +391,47 @@ struct ChartHomeView: View {
                 metrics
             }
             .padding(.horizontal, 24)
-            ZStack(alignment: .bottom) {
-                ChartMapView(model: vm, newestCatchID: toast?.id)
-                VStack(alignment: .leading, spacing: 8) {
-                    if vm.scrub != nil {
-                        Text(JPFormat.hm(vm.scrub ?? vm.now) + " の予測").font(.system(size: 12, weight: .bold)).foregroundStyle(ChartStyle.bg)
-                            .padding(.horizontal, 12).padding(.vertical, 5).background(ChartStyle.orange, in: Capsule())
-                    }
-                    if let toast { toastCard(toast) } else { thumbnails }
-                    adviceLine
-                }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 6)
-            }
-            .frame(maxHeight: .infinity)
+            mapArea
             forecastRow.frame(height: 92).padding(.horizontal, 24).padding(.top, 2)
             actions.padding(.horizontal, 24).padding(.top, 8).padding(.bottom, 10)
+        }
+    }
+
+    /// 港の図と、その下端に重ねる釣果・ひとこと。着せ替え（`chart.mapFrame`）は額のような枠と角飾りで囲む
+    @ViewBuilder
+    private var mapArea: some View {
+        let framed = ChartStyle.skin.mapFrame
+        let content = ZStack(alignment: .bottom) {
+            ChartMapView(model: vm, newestCatchID: toast?.id, framed: framed)
+            VStack(alignment: .leading, spacing: 8) {
+                if vm.scrub != nil {
+                    Text(JPFormat.hm(vm.scrub ?? vm.now) + " の予測").font(ChartStyle.font(12, .bold)).foregroundStyle(ChartStyle.onAccent)
+                        .padding(.horizontal, 12).padding(.vertical, 5).background(ChartStyle.orange, in: Capsule())
+                }
+                if let toast { toastCard(toast) } else { thumbnails }
+                // 枠のあるテーマ：下の角飾りに文字がかからないよう、ひとことは内側へ寄せる
+                adviceLine.padding(.horizontal, framed ? 18 : 0)
+            }
+            .padding(.horizontal, framed ? 16 : 20)
+            .padding(.bottom, framed ? 12 : 6)
+        }
+        if framed {
+            content
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(ChartFrame(radius: 8, cornerSize: 46))
+                .padding(.horizontal, 10).padding(.top, 6)
+                .frame(maxHeight: .infinity)
+        } else {
+            content.frame(maxHeight: .infinity)
         }
     }
 
     /// 見立ての一言（規則から組み立てる）
     private var adviceLine: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Image(systemName: "sparkle").font(.system(size: 11, weight: .bold)).foregroundStyle(ChartStyle.orange)
-            Text("AI").font(.system(size: 11, weight: .bold)).foregroundStyle(ChartStyle.orange)
-            Text(vm.advice).font(.system(size: 12.5, weight: .medium)).foregroundStyle(ChartStyle.white).lineLimit(1).minimumScaleFactor(0.75)
+            Image(systemName: "sparkle").font(ChartStyle.font(11, .bold)).foregroundStyle(ChartStyle.orange)
+            Text("AI").font(ChartStyle.font(11, .bold)).foregroundStyle(ChartStyle.orange)
+            Text(vm.advice).font(ChartStyle.font(12.5, .medium)).foregroundStyle(ChartStyle.white).lineLimit(1).minimumScaleFactor(0.75)
             Spacer(minLength: 0)
         }
     }
@@ -338,7 +442,7 @@ struct ChartHomeView: View {
         return HStack(spacing: 6) {
             Spacer(minLength: 0)
             if !vm.today.isEmpty {
-                Text("\(vm.today.count) 尾").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(ChartStyle.white)
+                Text("\(vm.today.count) 尾").font(ChartStyle.font(11.5, .semibold)).foregroundStyle(ChartStyle.white)
                     .shadow(color: .black.opacity(0.85), radius: 2, y: 1)
             }
             ForEach(pins) { pin in
@@ -370,12 +474,12 @@ struct ChartHomeView: View {
             thumbnail(for: t.id, size: 44, radius: 11)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 8) {
-                    Text(t.species.isEmpty ? "魚" : t.species).font(.system(size: 15.5, weight: .bold)).foregroundStyle(ChartStyle.white).lineLimit(1)
+                    Text(t.species.isEmpty ? "魚" : t.species).font(ChartStyle.font(15.5, .bold)).foregroundStyle(ChartStyle.white).lineLimit(1)
                     if let cm = t.lengthCm {
-                        Text("\(Int(cm.rounded())) cm").font(.system(size: 15.5, weight: .bold)).foregroundStyle(ChartStyle.orange)
+                        Text("\(Int(cm.rounded())) cm").font(ChartStyle.font(15.5, .bold)).foregroundStyle(ChartStyle.orange)
                     }
                 }
-                Text("\(t.number) 尾目 · \(JPFormat.hm(t.at)) · 記録しました").font(.system(size: 11, weight: .medium)).foregroundStyle(ChartStyle.gray1)
+                Text("\(t.number) 尾目 · \(JPFormat.hm(t.at)) · 記録しました").font(ChartStyle.font(11, .medium)).foregroundStyle(ChartStyle.gray1)
             }
             Spacer(minLength: 0)
             Button {
@@ -383,13 +487,13 @@ struct ChartHomeView: View {
                 withAnimation { toast = nil }
                 Task { await services.capture.deleteCatch(id: id, deletePhoto: false) }
             } label: {
-                Text("取り消す").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(ChartStyle.gray1).padding(.vertical, 10).padding(.leading, 6)
+                Text("取り消す").font(ChartStyle.font(11.5, .semibold)).foregroundStyle(ChartStyle.gray1).padding(.vertical, 10).padding(.leading, 6)
             }
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 10).padding(.vertical, 8)
         .background(ChartStyle.panel.opacity(0.92), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color.white.opacity(0.14), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(ChartStyle.border, lineWidth: 1))
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
@@ -405,8 +509,8 @@ struct ChartHomeView: View {
                 }
             } label: {
                 pill {
-                    Image(systemName: "arrow.uturn.down").font(.system(size: 14, weight: .semibold)).foregroundStyle(ChartStyle.gray1)
-                    Text("ロスト \(vm.lostCount)").font(.system(size: 14.5, weight: .semibold)).foregroundStyle(ChartStyle.white)
+                    Image(systemName: "arrow.uturn.down").font(ChartStyle.font(14, .semibold)).foregroundStyle(ChartStyle.gray1)
+                    Text("ロスト \(vm.lostCount)").font(ChartStyle.font(14.5, .semibold)).foregroundStyle(ChartStyle.white)
                 }
             }
             .buttonStyle(.plain)
@@ -414,13 +518,13 @@ struct ChartHomeView: View {
 
             Button { cameraOpen = true } label: {
                 ZStack {
-                    Circle().fill(RadialGradient(colors: [ChartStyle.orange.opacity(0.45), ChartStyle.orange.opacity(0)], center: .center, startRadius: 30, endRadius: 78))
+                    Circle().fill(RadialGradient(colors: [ChartStyle.orange.opacity(0.45 * ChartStyle.skin.glow), ChartStyle.orange.opacity(0)], center: .center, startRadius: 30, endRadius: 78))
                         .frame(width: 156, height: 156).scaleEffect(orbPulse ? 1.06 : 0.94)
-                    if let orb = ChartAssets.ui("orb_shutter.png") {
+                    if let orb = ChartAssets.ui("orb_shutter") {
                         Image(uiImage: orb).resizable().scaledToFit().frame(width: 108, height: 108)
                     } else {
                         Circle().fill(ChartStyle.orange).frame(width: 96, height: 96)
-                        Image(systemName: "camera.fill").font(.system(size: 34, weight: .bold)).foregroundStyle(ChartStyle.bg)
+                        Image(systemName: "camera.fill").font(ChartStyle.font(34, .bold)).foregroundStyle(ChartStyle.onAccent)
                     }
                 }
                 .frame(width: 108, height: 108)
@@ -431,8 +535,8 @@ struct ChartHomeView: View {
             pill {
                 RoundedRectangle(cornerRadius: 2.5, style: .continuous).fill(ChartStyle.gray1).frame(width: 11, height: 11)
                 VStack(spacing: 0) {
-                    Text("終了").font(.system(size: 14.5, weight: .semibold)).foregroundStyle(ChartStyle.white)
-                    Text("長押し").font(.system(size: 9, weight: .medium)).foregroundStyle(ChartStyle.gray2)
+                    Text("終了").font(ChartStyle.font(14.5, .semibold)).foregroundStyle(ChartStyle.white)
+                    Text("長押し").font(ChartStyle.font(9, .medium)).foregroundStyle(ChartStyle.gray2)
                 }
             }
             .overlay(alignment: .leading) {
@@ -467,7 +571,9 @@ struct ChartHomeView: View {
             .frame(maxWidth: .infinity)
             .frame(height: 50)
             .background(ChartStyle.panel.opacity(0.8), in: Capsule())
-            .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 1))
+            .overlay(Capsule().strokeBorder(ChartStyle.border, lineWidth: 1))
+            // 着せ替え：内側にもう 1 本の細い線（二重の縁）
+            .overlay(Capsule().inset(by: 3.5).stroke(ChartStyle.border.opacity(ChartStyle.skin.border == nil ? 0 : 0.38), lineWidth: 0.6))
     }
 
     // MARK: 小さな知らせ
@@ -483,10 +589,10 @@ struct ChartHomeView: View {
     private func noteView(_ text: String) -> some View {
         VStack {
             Spacer()
-            Text(text).font(.system(size: 13, weight: .semibold)).foregroundStyle(ChartStyle.white)
+            Text(text).font(ChartStyle.font(13, .semibold)).foregroundStyle(ChartStyle.white)
                 .padding(.horizontal, 16).padding(.vertical, 9)
                 .background(ChartStyle.panel.opacity(0.95), in: Capsule())
-                .overlay(Capsule().stroke(Color.white.opacity(0.14), lineWidth: 1))
+                .overlay(Capsule().stroke(ChartStyle.border, lineWidth: 1))
                 .padding(.bottom, 150)
         }
         .transition(.opacity)
@@ -500,7 +606,7 @@ struct ChartHomeView: View {
         ZStack(alignment: .topLeading) {
             CaptureView(onResultDismissed: { cameraOpen = false })
             Button { cameraOpen = false } label: {
-                Image(systemName: "xmark").font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
+                Image(systemName: "xmark").font(ChartStyle.font(16, .bold)).foregroundStyle(.white)
                     .frame(width: 44, height: 44).background(Color.black.opacity(0.45), in: Circle())
             }
             .buttonStyle(.plain)

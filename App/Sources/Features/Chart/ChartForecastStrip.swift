@@ -169,10 +169,10 @@ struct ChartForecastStrip: View {
         let marks = hourMarks(w: w).filter { $0.x > 46 && $0.x < w - 10 }
         return ZStack(alignment: .topLeading) {
             Color.clear
-            Text(JPFormat.hm(now)).font(.system(size: 10, weight: .semibold)).foregroundStyle(ChartStyle.white).fixedSize()
+            Text(JPFormat.hm(now)).font(ChartStyle.font(10, .semibold)).foregroundStyle(ChartStyle.white).fixedSize()
                 .position(x: 16, y: ly)
             ForEach(Array(marks.enumerated()), id: \.offset) { _, mark in
-                Text("\(mark.hour)時").font(.system(size: 10, weight: .medium)).foregroundStyle(ChartStyle.gray1).fixedSize().position(x: mark.x, y: ly)
+                Text("\(mark.hour)時").font(ChartStyle.font(10, .medium)).foregroundStyle(ChartStyle.gray1).fixedSize().position(x: mark.x, y: ly)
             }
         }
         .allowsHitTesting(false)
@@ -188,7 +188,7 @@ struct ChartForecastStrip: View {
                 let ty = tideY(extreme.levelCm, top: top, bottom: bottom)
                 Circle().fill(ChartStyle.cyan).frame(width: 5, height: 5).position(x: tx, y: ty)
                 Text(JPFormat.hm(extreme.at))
-                    .font(.system(size: 10, weight: .semibold)).monospacedDigit().foregroundStyle(ChartStyle.cyan).fixedSize()
+                    .font(ChartStyle.font(10, .semibold)).monospacedDigit().foregroundStyle(ChartStyle.cyan).fixedSize()
                     .shadow(color: ChartStyle.bg.opacity(0.95), radius: 2)
                     .position(x: min(max(tx, 18), w - 18), y: max(top + 5, ty - 9))
             }

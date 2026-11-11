@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "label": "シルフィ 海図（夕映えの湖）",
+  "base": "grimoireDark",
+  "screen": "chart",
+  "fonts": { "text": "serif", "number": "serif" },
+  "colors": {
+    "background": "#0A1310",
+    "surface": "#12221BE6",
+    "surfaceRaised": "#1C3329",
+    "accent": "#F0B45E",
+    "secondary": "#8FC7A4",
+    "sun": "#F4C96B",
+    "daylight": "#F29A4A",
+    "sea": "#9FD0F0",
+    "moon": "#C9B8F2",
+    "textPrimary": "#F7F0E1",
+    "textSecondary": "#C9D0C0",
+    "textTertiary": "#8C9A8A",
+    "faded": "#4A5A4E",
+    "panel": "#0E1B1599",
+    "scrim": "#00000033"
+  },
+  "style": {
+    "glass": true,
+    "glassOpacity": 0.6,
+    "glassBlur": false,
+    "chipOrnament": "✦",
+    "borderColor": "#D8D2BC66",
+    "borderWidth": 1,
+    "glowColor": "#0A1310"
+  },
+  "chart": {
+    "colors": {
+      "background": "#0A1310",
+      "text": "#F7F0E1",
+      "sub": "#C9D0C0",
+      "dim": "#8C9A8A",
+      "accent": "#F4B860",
+      "tide": "#9FD0F0",
+      "panel": "#12221B",
+      "border": "#D8D2BC8C",
+      "onAccent": "#1F1407"
+    },
+    "font": "serif",
+    "numberFont": "serif",
+    "idleNumberSize": 86,
+    "idleFaceGap": 0.2,
+    "idleTopScrim": 0.42,
+    "idleBottomScrim": 0.9,
+    "idleEffects": ["fireflies", "sparkles"],
+    "mapFrame": true,
+    "menu": "panel",
+    "glow": 0.5
+  }
+}
