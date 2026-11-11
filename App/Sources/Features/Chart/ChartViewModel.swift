@@ -60,7 +60,12 @@ final class ChartViewModel {
     private(set) var zones: [CastPredictor.Zone] = []
     private(set) var today: [CatchPin] = []
     private(set) var past: [Coordinate] = []
+    /// 現在地。精度の良い位置（40 m 以内・3 分以内）だけ。粗い位置は `userApprox`（丸だけ出す）
     private(set) var user: Coordinate?
+    /// 現在地の誤差の半径（m）
+    private(set) var userAccuracyM: Double = 0
+    /// おおよその現在地（精度 40〜150 m）。点は出さず、誤差の丸だけ出す
+    private(set) var userApprox: Coordinate?
     private(set) var conditions = Conditions()
     /// 今から 9 時間の釣れ率
     private(set) var points: [ScorePoint] = []
@@ -98,7 +103,12 @@ final class ChartViewModel {
         let home = services.homeModel
         now = home.now
         coordinate = home.coordinate
-        user = services.location.lastFix?.coordinate
+        // 現在地：精度の良い位置だけを点で出す。粗い位置（Wi-Fi・基地局の推定）は海の上に出ることがあるので、誤差の丸だけ
+        user = nil; userApprox = nil; userAccuracyM = 0
+        if let fix = services.location.lastFix, fix.coordinate.isPlausible, now.timeIntervalSince(fix.at) < 180 {
+            userAccuracyM = fix.horizontalAccuracyM
+            if fix.horizontalAccuracyM <= 40 { user = fix.coordinate } else if fix.horizontalAccuracyM <= 150 { userApprox = fix.coordinate }
+        }
         scoreNow = home.score?.score ?? 0
         let start = now.addingTimeInterval(-900), end = now.addingTimeInterval(Self.horizon)
         points = home.timeline.filter { $0.at >= start && $0.at <= end }
@@ -111,17 +121,29 @@ final class ChartViewModel {
         updateTide(services: services)
         twilight = Self.twilightBands(from: now, to: end, coordinate: coordinate)
 
-        // 図：その釣り場（か現在地）を写している海図。無ければ Apple の地図
+        // 図：釣り場・この釣行の釣果・精度の良い現在地を写している海図。無ければ Apple の地図。
+        // 位置の揺れで地図が切り替わらないよう、いま出している海図が候補を 1 つでも写していれば替えない
+        // （以前は釣行の「最後の立ち位置」だけで選んでいて、粗い位置が海図の外へ出ると Apple の地図に替わっていた）
         let catalog = PortChartCatalog.bundled()
-        let target = catalog.chart(containing: coordinate) ?? user.flatMap { catalog.chart(containing: $0) }
+        let liveCatches = home.liveSession?.catches.map(\.coordinate).filter(\.isPlausible) ?? []
+        var candidates: [Coordinate] = []
+        if let spot = home.spot?.coordinate { candidates.append(spot) }
+        candidates += liveCatches
+        if let user { candidates.append(user) }
+        if candidates.isEmpty { candidates.append(coordinate) }
+        let target = catalog.chart(for: candidates, keeping: isIllustrated ? frame?.id : nil)
         let newFrame: PortChart
         if let chart = target, let art = ChartAssets.chart(id: chart.id) {
             newFrame = chart
             if frame?.id != chart.id || !isIllustrated { image = art }
             isIllustrated = true
         } else {
-            newFrame = Self.plainFrame(center: coordinate)
-            if frame?.id != newFrame.id || isIllustrated {
+            // Apple の地図：中心は釣り場（無ければ釣果・現在地）。前の中心から 300 m 以内なら撮り直さない
+            let center = candidates[0]
+            if let old = frame, !isIllustrated, Geo.distanceMeters(old.center, center) < 300 {
+                newFrame = old
+            } else {
+                newFrame = Self.plainFrame(center: center)
                 image = nil
                 loadSnapshot(for: newFrame)
             }

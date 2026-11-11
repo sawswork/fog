@@ -120,9 +120,11 @@ final class SessionDetectionService {
         guard Date.now.timeIntervalSince(fix.at) < 120 else { return }
         // 自動検出オフ：記録中なら立ち位置だけ記録する（逆ジオコーディングも状態機械も使わない）
         guard Self.autoDetectionEnabled else {
-            if activeSessionID != nil, fix.horizontalAccuracyM <= 200 {
-                scheduler.currentCoordinate = fix.coordinate
-                recordTrackIfMoved(fix)
+            // 精度の悪い位置（Wi-Fi・基地局の推定。数百 m ずれる）は立ち位置に使わない。
+            // 立ち位置の記録は 35 m 以内、スナップショット・ロストの位置は 65 m 以内の位置だけ
+            if activeSessionID != nil {
+                if fix.horizontalAccuracyM <= Self.snapshotAccuracyM { scheduler.currentCoordinate = fix.coordinate }
+                if fix.horizontalAccuracyM <= Self.trackAccuracyM { recordTrackIfMoved(fix) }
             }
             return
         }
@@ -139,11 +141,15 @@ final class SessionDetectionService {
             case .end(let at):
                 await endSession(at: at)
             case .track(let sample):
-                recordTrack(sample)
+                if fix.horizontalAccuracyM <= Self.trackAccuracyM { recordTrack(sample) }
             }
         }
-        if activeSessionID != nil { scheduler.currentCoordinate = fix.coordinate }
+        if activeSessionID != nil, fix.horizontalAccuracyM <= Self.snapshotAccuracyM { scheduler.currentCoordinate = fix.coordinate }
     }
+
+    /// 立ち位置として記録する位置の精度（m）と、スナップショット・ロストの位置に使う精度（m）
+    static let trackAccuracyM = 35.0
+    static let snapshotAccuracyM = 65.0
 
     private func context(for fix: LocationFix) async -> SessionDetector.Context {
         let spots = (try? store.spots()) ?? []

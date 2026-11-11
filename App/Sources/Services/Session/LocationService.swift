@@ -61,13 +61,14 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
         mode = .monitoring
     }
 
-    /// 釣行中：100 m 精度・50 m 間隔の低頻度更新。背景でも続ける（立ち位置とスナップショットの位置のため）。
+    /// 釣行中：背景では 100 m 精度・50 m 間隔の低頻度更新（電池のため）。画面を見ている間（海図・撮影・地図）は高精度に上げる。
+    /// 100 m 精度のままだと、現在地が海の上に出たり、立ち位置の線が数百 m 飛んだりする（2026-11-11 実釣で発生）
     func startTracking() {
         guard mode != .tracking else { return }
         manager.stopMonitoringVisits()
         manager.stopMonitoringSignificantLocationChanges()
-        manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
-        manager.distanceFilter = 50
+        manager.desiredAccuracy = foregroundUsers > 0 ? kCLLocationAccuracyBest : kCLLocationAccuracyHundredMeters
+        manager.distanceFilter = foregroundUsers > 0 ? 5 : 50
         // 「使用中のみ」の許可でも、前面で始めた更新は背景で続けられる（青い帯が出る）。常に許可なら帯は出ない
         manager.allowsBackgroundLocationUpdates = authorization == .authorizedAlways || authorization == .authorizedWhenInUse
         manager.startUpdatingLocation()
@@ -92,7 +93,12 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
     }
 
     private func applyForegroundIfNeeded() {
-        guard mode != .tracking else { return }
+        // 釣行中：画面を見ている間だけ高精度（GPS）。離れたら低頻度に戻す
+        if mode == .tracking {
+            manager.desiredAccuracy = foregroundUsers > 0 ? kCLLocationAccuracyBest : kCLLocationAccuracyHundredMeters
+            manager.distanceFilter = foregroundUsers > 0 ? 5 : 50
+            return
+        }
         if foregroundUsers > 0 {
             manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
             manager.distanceFilter = 15

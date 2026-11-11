@@ -97,6 +97,12 @@ final class CaptureViewModel {
             result?.catchRecord.angler = angler == AnglerSettings.ownName ? nil : angler
         }
         lastResultAt = .now
+        // 釣った人は 1 枚ごとに自分へ戻す。ほかの人を選んだまま次の自分の魚を撮ると、図鑑・自己記録に入らなくなるため
+        // （2026-11-11 実釣：釣行後に図鑑に出なかった）。ほかの人の魚は、撮る前にその都度選ぶ
+        if angler != AnglerSettings.ownName {
+            angler = AnglerSettings.ownName
+            capture.currentAngler = nil
+        }
     }
 
     /// 撮影位置：記録中の釣行の最後の立ち位置 → 端末の最新の位置（撮影画面を開いたときに取り始める）

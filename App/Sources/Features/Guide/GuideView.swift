@@ -16,6 +16,8 @@ struct GuideView: View {
     @Environment(\.captureTab) private var captureTab
     /// 釣った魚 / 全国の魚（F-60）
     @State private var mode: Mode = .caught
+    /// ほかの人の魚として記録されている釣果（「ねも 4 尾」）。あれば、図鑑に入っていない理由を 1 行で出す
+    @State private var othersNote: String?
     @State private var catalog = FishCatalog(entries: [])
     @State private var query = ""
     enum Mode: String, CaseIterable { case caught = "釣った魚", all = "全国の魚" }
@@ -32,6 +34,10 @@ struct GuideView: View {
     var body: some View {
         VStack(spacing: DS.Spacing.s) {
             header
+            if mode == .caught, let othersNote {
+                Text("ほかの人の魚（\(othersNote)）は図鑑に入れていません。自分の魚なら、ログの釣行で釣果の行をタップして「釣った人」を自分に直すと入ります")
+                    .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary).frame(maxWidth: .infinity, alignment: .leading)
+            }
             if mode == .all {
                 FishDatabaseSection(catalog: catalog, caughtIDs: Set(caughtByID.keys), caughtCount: caughtByID, query: $query)
             } else if !query.isEmpty {
@@ -145,6 +151,11 @@ struct GuideView: View {
         // 図鑑は自分が釣った魚だけ（他の人の魚を自分の端末で撮った分は入れない。F-54）
         let sessions = (try? services.store.ownSessions()) ?? []
         entries = Perf.measure("図鑑の集計") { Guide.entries(sessions: sessions) }
+        // ほかの人の魚として記録されている分（図鑑に出ない理由が分かるように数を出す）
+        let own = AnglerSettings.ownName
+        var counts: [String: Int] = [:]
+        for c in ((try? services.store.sessions()) ?? []).flatMap(\.catches) where !c.isOwn(ownName: own) { counts[c.angler ?? "ほかの人", default: 0] += 1 }
+        othersNote = counts.isEmpty ? nil : counts.sorted { $0.value > $1.value }.map { "\($0.key) \($0.value) 尾" }.joined(separator: "、")
     }
 }
 

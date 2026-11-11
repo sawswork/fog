@@ -22,6 +22,10 @@ struct SessionDetailView: View {
     @State private var tideExtremes: [TideExtreme] = []
     @State private var showMap = false
     @State private var viewing: Catch?
+    /// 修正する釣果と、修正のあとに読み直した釣行（`session` は開いたときの値のまま）
+    @State private var editing: Catch?
+    @State private var refreshed: Core.Session?
+    private var shown: Core.Session { refreshed ?? session }
 
     var body: some View {
         ScrollView {
@@ -33,7 +37,7 @@ struct SessionDetailView: View {
                         Text(r.body).font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary).fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                panel("釣果 \(session.catches.count)尾 · タップで写真、長押しで削除") { catches }
+                panel("釣果 \(shown.catches.count)尾 · 写真をタップで拡大、行をタップで修正、長押しで削除") { catches }
                 if !friendCatches.isEmpty {
                     panel("仲間の釣果 \(friendCatches.count)尾 · タップで写真") {
                         ForEach(friendCatches) { c in
@@ -53,7 +57,9 @@ struct SessionDetailView: View {
         .onAppear { Perf.mark("釣行詳細を開いた") }
         .onDisappear { Perf.mark("釣行詳細を閉じた") }
         .task { computeReview() }
-        .fullScreenCover(isPresented: $showMap) { SessionMapSheet(session: session, spotName: spotName) }
+        .fullScreenCover(isPresented: $showMap) { SessionMapSheet(session: shown, spotName: spotName) }
+        .sheet(item: $editing) { item in CatchEditSheet(catchItem: item) { reloadSession() }.presentationDetents([.large]) }
+        .onReceive(NotificationCenter.default.publisher(for: .fogStoreDidChange)) { _ in reloadSession() }
         .fullScreenCover(item: $viewing) { c in PhotoViewer(catchItem: c) }
         .fullScreenCover(item: $viewingShared) { s in
             PhotoViewer(catchItem: Catch(id: s.id, sessionID: s.id, at: s.at, coordinate: s.coordinate, species: s.species, speciesConfidence: 1, lengthCm: s.lengthCm, angler: s.angler),
@@ -215,16 +221,23 @@ struct SessionDetailView: View {
         }
     }
 
-    /// 立ち位置の軌跡（モノトーン地図）
+    /// 立った場所と釣れた場所（モノトーン地図）。軌跡は飛び値を外して「立った場所」にまとめてから描く
     private var track: some View {
-        let coords = session.track.map { CLLocationCoordinate2D(latitude: $0.coordinate.latitude, longitude: $0.coordinate.longitude) }
+        let cleaned = TrackCleaner.clean(shown.track, anchors: shown.catches.map(\.coordinate), end: shown.endedAt)
+        let catchPoints = shown.catches.map(\.coordinate).filter(\.isPlausible)
+        let all = cleaned.stays.map(\.coordinate) + catchPoints
         return Group {
-            if coords.count >= 1 {
-                Map(initialPosition: .region(MKCoordinateRegion(center: coords[coords.count / 2], latitudinalMeters: 600, longitudinalMeters: 600)), interactionModes: []) {
-                    if coords.count >= 2 { MapPolyline(coordinates: coords).stroke(DS.Color.accent, lineWidth: 3) }
-                    ForEach(session.catches, id: \.id) { c in
-                        Annotation(c.species, coordinate: CLLocationCoordinate2D(latitude: c.coordinate.latitude, longitude: c.coordinate.longitude)) {
-                            Circle().fill(DS.Color.accent).frame(width: 10, height: 10)
+            if !all.isEmpty {
+                Map(initialPosition: .region(SessionMapGeometry.region(fitting: all)), interactionModes: []) {
+                    if cleaned.path.count >= 2 {
+                        MapPolyline(coordinates: cleaned.path.map(\.cl)).stroke(Color.white.opacity(0.6), style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [4, 4]))
+                    }
+                    ForEach(cleaned.stays) { stay in
+                        Annotation("", coordinate: stay.coordinate.cl) { StayMarker(minutes: stay.minutes, compact: true) }
+                    }
+                    ForEach(shown.catches.filter { $0.coordinate.isPlausible }, id: \.id) { c in
+                        Annotation("", coordinate: c.coordinate.cl) {
+                            Circle().fill(DS.Color.accent).frame(width: 9, height: 9).overlay(Circle().stroke(.white, lineWidth: 1.5))
                         }
                     }
                 }
@@ -242,10 +255,14 @@ struct SessionDetailView: View {
         }
     }
 
+    private func reloadSession() {
+        if let latest = try? services.store.session(id: session.id) { refreshed = latest }
+    }
+
     /// 釣果の一覧。長押しで削除（記録だけ／写真も）。
     private var catches: some View {
         VStack(alignment: .leading, spacing: DS.Spacing.s) {
-            ForEach(session.catches.filter { !removedIDs.contains($0.id) }, id: \.id) { c in
+            ForEach(shown.catches.filter { !removedIDs.contains($0.id) }, id: \.id) { c in
                 HStack(spacing: DS.Spacing.m) {
                     Group {
                         if let data = services.store.thumbnail(catchID: c.id), let ui = UIImage(data: data) {
@@ -284,11 +301,14 @@ struct SessionDetailView: View {
                         }
                     }
                     Spacer()
+                    Image(systemName: "pencil").font(.system(size: 14, weight: .semibold)).foregroundStyle(DS.Color.textTertiary)
                 }
                 .contentShape(Rectangle())
+                // 行をタップで修正（魚種・サイズ・釣った人・リグ）。写真のタップは拡大
+                .onTapGesture { editing = c }
                 .onLongPressGesture { deleting = c }
             }
-            if session.catches.isEmpty { Text("釣果なし").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary) }
+            if shown.catches.isEmpty { Text("釣果なし").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary) }
         }
         .catchDeleteDialog(item: $deleting) { removedIDs.insert($0.id) }
     }
