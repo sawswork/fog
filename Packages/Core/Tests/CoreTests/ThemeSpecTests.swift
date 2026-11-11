@@ -123,7 +123,7 @@ final class ThemeSpecTests: XCTestCase {
         {"label":"シルフィ","screen":"chart",
          "chart":{"colors":{"accent":"#F2B95F","tide":"#9AD7E8","border":"#C9CFD6AA","bad":"zzz"},
                   "font":"serif","idleNumberSize":300,"idleFaceGap":0.9,"idleTopScrim":0.4,
-                  "idleEffects":["fireflies","sparkles"],"mapFrame":true,"menu":"panel"}}
+                  "idleEffects":["fireflies","sparkles"],"mapFrame":true,"menu":"panel","glow":0.5}}
         """##
         let spec = try ThemeSpec.parse(Data(json.utf8))
         let skin = try XCTUnwrap(spec.chart)
@@ -136,6 +136,8 @@ final class ThemeSpecTests: XCTestCase {
         XCTAssertEqual(skin.resolvedIdleBottomScrim, 1)            // 省略は 1
         XCTAssertEqual(skin.idleEffects ?? [], ["fireflies", "sparkles"])
         XCTAssertTrue(skin.usesMenuPanel)
+        XCTAssertEqual(skin.resolvedGlow, 0.5)
+        XCTAssertEqual(ThemeSpec.ChartSkin().resolvedGlow, 1)
         XCTAssertEqual(skin.mapFrame, true)
         // chart の無い海図テーマは標準の見た目
         let plain = try ThemeSpec.parse(Data(##"{"label":"海図","screen":"chart"}"##.utf8))

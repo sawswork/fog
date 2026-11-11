@@ -27,6 +27,8 @@ struct ChartSkinValues {
     var idleDim: Double = 0.25
     var idleEffects: [String] = []
     var mapFrame = false
+    /// ボタンのまわりの光の強さ（0〜1）
+    var glow: Double = 1
     var menuPanel = false
     /// 素材を探すテーマのフォルダ（無ければ標準の `ChartUI/`）
     var folder: URL?
@@ -57,6 +59,7 @@ struct ChartSkinValues {
         idleDim = 0.06
         mapFrame = skin.mapFrame == true
         menuPanel = skin.usesMenuPanel
+        glow = skin.resolvedGlow
     }
 
     private init() {}

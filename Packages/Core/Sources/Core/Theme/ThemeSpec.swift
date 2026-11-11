@@ -50,11 +50,13 @@ public struct ThemeSpec: Codable, Hashable, Sendable {
         public var mapFrame: Bool?
         /// メニュー：省略は標準の一覧、"panel" はテーマの色と印（`chart_menu_*`）のパネル
         public var menu: String?
+        /// 開始・撮影ボタンのまわりの光の強さ（0〜1。省略 1）。金や白の強調色は弱めると濁らない
+        public var glow: Double?
 
         public init(colors: [String: String]? = nil, font: String? = nil, numberFont: String? = nil, idleNumberSize: Double? = nil, idleFaceGap: Double? = nil,
-                    idleTopScrim: Double? = nil, idleBottomScrim: Double? = nil, idleEffects: [String]? = nil, mapFrame: Bool? = nil, menu: String? = nil) {
+                    idleTopScrim: Double? = nil, idleBottomScrim: Double? = nil, idleEffects: [String]? = nil, mapFrame: Bool? = nil, menu: String? = nil, glow: Double? = nil) {
             self.colors = colors; self.font = font; self.numberFont = numberFont; self.idleNumberSize = idleNumberSize; self.idleFaceGap = idleFaceGap
-            self.idleTopScrim = idleTopScrim; self.idleBottomScrim = idleBottomScrim; self.idleEffects = idleEffects; self.mapFrame = mapFrame; self.menu = menu
+            self.idleTopScrim = idleTopScrim; self.idleBottomScrim = idleBottomScrim; self.idleEffects = idleEffects; self.mapFrame = mapFrame; self.menu = menu; self.glow = glow
         }
 
         /// 読めた色だけ
@@ -68,6 +70,7 @@ public struct ThemeSpec: Codable, Hashable, Sendable {
         public var resolvedIdleTopScrim: Double { min(1, max(0, idleTopScrim ?? 0)) }
         public var resolvedIdleBottomScrim: Double { min(1, max(0, idleBottomScrim ?? 1)) }
         public var usesMenuPanel: Bool { menu == "panel" }
+        public var resolvedGlow: Double { min(1, max(0, glow ?? 1)) }
     }
 
     public init(version: Int = 1, label: String, base: String? = nil, fallbackFolder: String? = nil, light: Bool? = nil, fonts: Fonts? = nil,

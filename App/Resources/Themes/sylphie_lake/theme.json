@@ -44,12 +44,13 @@
     },
     "font": "serif",
     "numberFont": "serif",
-    "idleNumberSize": 92,
+    "idleNumberSize": 86,
     "idleFaceGap": 0.2,
     "idleTopScrim": 0.42,
     "idleBottomScrim": 0.9,
     "idleEffects": ["fireflies", "sparkles"],
     "mapFrame": true,
-    "menu": "panel"
+    "menu": "panel",
+    "glow": 0.5
   }
 }

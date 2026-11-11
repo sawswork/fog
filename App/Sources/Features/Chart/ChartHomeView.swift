@@ -188,10 +188,10 @@ struct ChartHomeView: View {
                     }
                 }
             }
-            .padding(.vertical, 6)
+            .padding(.vertical, 9)
             .frame(width: 228)
             .background(ChartStyle.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(ChartFrame(radius: 10, cornerSize: 34))
+            .overlay(ChartFrame(radius: 10, cornerSize: 28))
             .shadow(color: .black.opacity(0.5), radius: 18, y: 8)
             .padding(.trailing, 20).padding(.top, 46)
         }
@@ -321,11 +321,26 @@ struct ChartHomeView: View {
                         Text("\(vm.shownScore)").font(ChartStyle.number(skin.idleNumberSize, .bold)).monospacedDigit()
                             .foregroundStyle(vm.scrub != nil ? ChartStyle.orange : ChartStyle.white)
                             .contentTransition(.numericText()).minimumScaleFactor(0.6).lineLimit(1)
-                        nextPeak
+                        if skin.idleFaceGap == nil {
+                            nextPeak
+                        } else {
+                            // 絵の上では、次の山を小さな札に入れて読めるようにする
+                            nextPeak.padding(.horizontal, 11).padding(.vertical, 4)
+                                .background(ChartStyle.panel.opacity(0.58), in: Capsule())
+                                .overlay(Capsule().strokeBorder(ChartStyle.border.opacity(0.7), lineWidth: 0.7))
+                        }
                     }
                     .shadow(color: ChartStyle.bg.opacity(skin.idleFaceGap == nil ? 0 : 0.55), radius: 8, y: 1)
                     if let gap = skin.idleFaceGap { Spacer(minLength: full * gap) } else { Spacer(minLength: 12) }
-                    metrics
+                    if skin.idleFaceGap == nil {
+                        metrics
+                    } else {
+                        // 絵の上では、数字の行を細い帯（半透明の面と縁）に載せる
+                        metrics.padding(.horizontal, 13).frame(height: 36)
+                            .background(ChartStyle.panel.opacity(0.6), in: Capsule())
+                            .overlay(Capsule().strokeBorder(ChartStyle.border.opacity(0.75), lineWidth: 0.8))
+                            .padding(.horizontal, -10)
+                    }
                     ChartForecastStrip(points: vm.points, tide: vm.tide, tideRange: vm.tideRange, now: vm.now, horizon: ChartViewModel.horizon, extremes: home.tideExtremes, scrub: scrubBinding)
                         .frame(height: 124).padding(.top, 14)
                     if skin.idleFaceGap == nil { Spacer(minLength: 12) } else { Color.clear.frame(height: 12) }
@@ -351,7 +366,7 @@ struct ChartHomeView: View {
             }
         } label: {
             ZStack {
-                Circle().fill(RadialGradient(colors: [ChartStyle.orange.opacity(0.32), ChartStyle.orange.opacity(0)], center: .center, startRadius: 40, endRadius: 104))
+                Circle().fill(RadialGradient(colors: [ChartStyle.orange.opacity(0.32 * ChartStyle.skin.glow), ChartStyle.orange.opacity(0)], center: .center, startRadius: 40, endRadius: 104))
                     .frame(width: 208, height: 208).scaleEffect(orbPulse ? 1.05 : 0.95)
                 if let orb = ChartAssets.ui("orb_start") {
                     Image(uiImage: orb).resizable().scaledToFit().frame(width: 152, height: 152)
@@ -394,7 +409,8 @@ struct ChartHomeView: View {
                         .padding(.horizontal, 12).padding(.vertical, 5).background(ChartStyle.orange, in: Capsule())
                 }
                 if let toast { toastCard(toast) } else { thumbnails }
-                adviceLine
+                // 枠のあるテーマ：下の角飾りに文字がかからないよう、ひとことは内側へ寄せる
+                adviceLine.padding(.horizontal, framed ? 18 : 0)
             }
             .padding(.horizontal, framed ? 16 : 20)
             .padding(.bottom, framed ? 12 : 6)
@@ -502,7 +518,7 @@ struct ChartHomeView: View {
 
             Button { cameraOpen = true } label: {
                 ZStack {
-                    Circle().fill(RadialGradient(colors: [ChartStyle.orange.opacity(0.45), ChartStyle.orange.opacity(0)], center: .center, startRadius: 30, endRadius: 78))
+                    Circle().fill(RadialGradient(colors: [ChartStyle.orange.opacity(0.45 * ChartStyle.skin.glow), ChartStyle.orange.opacity(0)], center: .center, startRadius: 30, endRadius: 78))
                         .frame(width: 156, height: 156).scaleEffect(orbPulse ? 1.06 : 0.94)
                     if let orb = ChartAssets.ui("orb_shutter") {
                         Image(uiImage: orb).resizable().scaledToFit().frame(width: 108, height: 108)
