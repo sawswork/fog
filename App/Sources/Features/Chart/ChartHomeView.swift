@@ -254,7 +254,7 @@ struct ChartHomeView: View {
                     Spacer(minLength: 12)
                     metrics
                     ChartForecastStrip(points: vm.points, tide: vm.tide, tideRange: vm.tideRange, now: vm.now, horizon: ChartViewModel.horizon, extremes: home.tideExtremes, scrub: scrubBinding)
-                        .frame(height: 150).padding(.top, 14)
+                        .frame(height: 124).padding(.top, 14)
                     Spacer(minLength: 12)
                     startOrb
                     Text("押すと釣行が始まり、この港の図が開きます").font(.system(size: 11.5, weight: .medium)).foregroundStyle(ChartStyle.gray2)
@@ -317,7 +317,7 @@ struct ChartHomeView: View {
                 .padding(.bottom, 6)
             }
             .frame(maxHeight: .infinity)
-            forecastRow.frame(height: 108).padding(.horizontal, 24).padding(.top, 2)
+            forecastRow.frame(height: 92).padding(.horizontal, 24).padding(.top, 2)
             actions.padding(.horizontal, 24).padding(.top, 8).padding(.bottom, 10)
         }
     }
