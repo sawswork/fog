@@ -32,6 +32,12 @@ struct ChartHomeView: View {
     @State private var endProgress: CGFloat = 0
     @State private var orbPulse = false
     @State private var menuOpen = false
+    /// 声で記録・相談（F-65）
+    @State private var voice = SpeechRecorder()
+    @State private var voiceOpen = false
+    @State private var voiceBusy = false
+    @State private var voiceReply: String?
+    @State private var voiceTask: Task<Void, Never>?
 
     private var home: HomeViewModel { services.homeModel }
     private var scrubBinding: Binding<Date?> { Binding(get: { vm.scrub }, set: { vm.scrub = $0 }) }
@@ -42,8 +48,10 @@ struct ChartHomeView: View {
             if home.isRecording { recording } else { idle }
             if let note { noteView(note) }
             if menuOpen { menuPanel.transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .topTrailing))) }
+            if voiceOpen { voiceCard.transition(.opacity.combined(with: .move(edge: .bottom))) }
         }
         .preferredColorScheme(.dark)
+        .onDisappear { stopVoice() }
         .onAppear {
             home.attach(services)
             vm.update(services: services)
@@ -121,9 +129,117 @@ struct ChartHomeView: View {
                         .font(ChartStyle.number(17, .semibold)).monospacedDigit().foregroundStyle(ChartStyle.white)
                 }
             }
+            voiceButton
             menu
         }
         .frame(height: 40)
+    }
+
+    // MARK: 声で記録・相談（F-65）
+
+    /// マイク：押して話すと、記録（ロスト・リグ・開始/終了・撮影）か相談（次の一手・記録への質問など）になる。話し終えると自動で止まる
+    private var voiceButton: some View {
+        Button { voiceOpen ? stopVoice() : startVoice() } label: {
+            ZStack {
+                Circle().fill(voice.isRecording ? ChartStyle.orange : ChartStyle.panel.opacity(0.62))
+                Circle().strokeBorder(ChartStyle.border, lineWidth: 1)
+                Image(systemName: "mic.fill").font(ChartStyle.font(14, .bold)).foregroundStyle(voice.isRecording ? ChartStyle.onAccent : ChartStyle.white)
+            }
+            .frame(width: 36, height: 36)
+            .frame(width: 40, height: 40).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("声で記録・相談")
+    }
+
+    /// 聞いている間は書き起こし、終わったら結果。タップで閉じる
+    private var voiceCard: some View {
+        VStack {
+            Spacer()
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Image(systemName: voice.isRecording ? "waveform" : (voiceBusy ? "ellipsis" : "sparkle")).font(ChartStyle.font(13, .bold)).foregroundStyle(ChartStyle.orange)
+                    Text(voice.isRecording ? "聞いています（話し終えると止まります）" : (voiceBusy ? "考えています" : "結果"))
+                        .font(ChartStyle.font(11.5, .semibold)).foregroundStyle(ChartStyle.gray1)
+                    Spacer()
+                    Button { stopVoice() } label: {
+                        Image(systemName: "xmark").font(ChartStyle.font(12, .bold)).foregroundStyle(ChartStyle.gray1).frame(width: 30, height: 30).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                if let error = voice.error {
+                    Text(error).font(ChartStyle.font(13, .medium)).foregroundStyle(ChartStyle.white)
+                } else if let reply = voiceReply {
+                    if !voice.transcript.isEmpty { Text("「\(voice.transcript)」").font(ChartStyle.font(11.5, .medium)).foregroundStyle(ChartStyle.gray2).lineLimit(2) }
+                    Text(reply).font(ChartStyle.font(14, .semibold)).foregroundStyle(ChartStyle.white).fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text(voice.transcript.isEmpty ? "例：「ロスト」「シンカー 14 グラムに替えた」「次どうする？」「終了」" : voice.transcript)
+                        .font(ChartStyle.font(14, .medium)).foregroundStyle(voice.transcript.isEmpty ? ChartStyle.gray2 : ChartStyle.white).lineLimit(4)
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(ChartStyle.panel.opacity(0.97), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(ChartStyle.border, lineWidth: 1))
+            .shadow(color: .black.opacity(0.45), radius: 14, y: 6)
+            .padding(.horizontal, 16).padding(.bottom, home.isRecording ? 132 : 236)
+        }
+    }
+
+    private func startVoice() {
+        voiceTask?.cancel()
+        voiceReply = nil
+        voiceBusy = false
+        withAnimation(.easeOut(duration: 0.2)) { voiceOpen = true }
+        voiceTask = Task {
+            await voice.start()
+            guard voice.isRecording else { return }
+            // 話し終わり：文字が 1.6 秒変わらなければ止める。何も話さなければ 8 秒、長くても 20 秒
+            var last = "", still = 0.0, total = 0.0
+            while !Task.isCancelled, voice.isRecording {
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                total += 0.3
+                if voice.transcript == last { still += 0.3 } else { last = voice.transcript; still = 0 }
+                if (!last.isEmpty && still >= 1.6) || (last.isEmpty && total >= 8) || total >= 20 { break }
+            }
+            guard !Task.isCancelled else { return }
+            voice.stop()
+            let text = voice.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { withAnimation { voiceOpen = false }; return }
+            voiceBusy = true
+            let reply = await answer(text)
+            guard !Task.isCancelled else { return }
+            voiceBusy = false
+            voiceReply = reply.text
+            vm.update(services: services)
+            if reply.openCamera {
+                withAnimation { voiceOpen = false }
+                cameraOpen = true
+            } else if case .command = AssistantActions.route(text) {
+                // 記録の確認は 4 秒で消す（相談の答えは、読めるように残す）
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                if !Task.isCancelled { withAnimation { voiceOpen = false } }
+            }
+        }
+    }
+
+    private func stopVoice() {
+        voiceTask?.cancel()
+        voiceTask = nil
+        if voice.isRecording { voice.stop() }
+        voiceBusy = false
+        withAnimation(.easeIn(duration: 0.15)) { voiceOpen = false }
+    }
+
+    /// 話した言葉を、記録・操作か相談として処理する（相談の画面と同じ振り分け）
+    private func answer(_ text: String) async -> AssistantActions.Reply {
+        let intent = AssistantActions.route(text)
+        if let reply = await AssistantActions.run(intent, text: text, services: services, home: home) { return reply }
+        // 予報の質問など：これまでの相談役に聞く
+        let assistant = services.assistant
+        let context = await AssistantContext.build(services: services, home: home, question: text)
+        await assistant.ask(text, context: context)
+        return AssistantActions.Reply(text: assistant.messages.last(where: { $0.role == .assistant })?.text ?? "うまく答えられませんでした")
     }
 
     private static let menuItems: [(item: MenuItem, title: String, symbol: String)] = [
@@ -447,7 +563,7 @@ struct ChartHomeView: View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Image(systemName: "sparkle").font(ChartStyle.font(11, .bold)).foregroundStyle(ChartStyle.orange)
             Text("AI").font(ChartStyle.font(11, .bold)).foregroundStyle(ChartStyle.orange)
-            Text(vm.advice).font(ChartStyle.font(12.5, .medium)).foregroundStyle(ChartStyle.white).lineLimit(1).minimumScaleFactor(0.75)
+            Text(vm.advice).font(ChartStyle.font(12.5, .medium)).foregroundStyle(ChartStyle.white).lineLimit(2).minimumScaleFactor(0.8)
             Spacer(minLength: 0)
         }
     }
