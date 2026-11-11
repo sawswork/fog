@@ -109,4 +109,19 @@ public struct PortChartCatalog: Sendable {
         guard c.isPlausible else { return nil }
         return charts.filter { $0.contains(c) }.min { Geo.distanceMeters($0.center, c) < Geo.distanceMeters($1.center, c) }
     }
+
+    /// 釣行に使う海図を選ぶ。候補の位置（釣り場・この釣行の釣果・精度の良い現在地）を写している海図のうち、
+    /// いちばん多くの候補を写しているもの（同じなら中心が近いもの）。
+    /// `keeping` は今出している海図：候補を 1 つでも写していれば替えない（位置の揺れで地図が切り替わらないように）
+    public func chart(for candidates: [Coordinate], keeping current: String? = nil) -> PortChart? {
+        let points = candidates.filter(\.isPlausible)
+        guard !points.isEmpty else { return nil }
+        if let current, let kept = charts.first(where: { $0.id == current }), points.contains(where: { kept.contains($0) }) { return kept }
+        func hits(_ chart: PortChart) -> Int { points.filter { chart.contains($0) }.count }
+        func nearest(_ chart: PortChart) -> Double { points.map { Geo.distanceMeters(chart.center, $0) }.min() ?? .greatestFiniteMagnitude }
+        return charts.filter { hits($0) > 0 }.max { a, b in
+            let ha = hits(a), hb = hits(b)
+            return ha != hb ? ha < hb : nearest(a) > nearest(b)
+        }
+    }
 }
