@@ -252,7 +252,7 @@ struct ChartHomeView: View {
     private var forecastRow: some View {
         HStack(alignment: .center, spacing: 14) {
             scoreBlock(size: 46).frame(width: 112, alignment: .leading)
-            ChartForecastStrip(points: vm.points, tide: vm.tide, tideRange: vm.tideRange, now: vm.now, horizon: ChartViewModel.horizon, extremes: home.tideExtremes, scrub: scrubBinding)
+            ChartForecastStrip(points: vm.points, tide: vm.tide, tideRange: vm.tideRange, now: vm.now, horizon: ChartViewModel.horizon, extremes: home.tideExtremes, twilight: vm.twilight, scrub: scrubBinding)
         }
     }
 
@@ -289,28 +289,48 @@ struct ChartHomeView: View {
         let skin = ChartStyle.skin
         return GeometryReader { geo in
             let full = geo.size.height + geo.safeAreaInsets.top + geo.safeAreaInsets.bottom
-            ZStack {
-                if let background = ChartAssets.ui("bg_idle") {
-                    Image(uiImage: background).resizable().scaledToFill()
-                        .frame(width: geo.size.width, height: full)
-                        .clipped().ignoresSafeArea()
-                        .overlay(ChartStyle.bg.opacity(skin.idleDim).ignoresSafeArea())
-                        .overlay(alignment: .top) {
-                            // 上の幕：明るい空の上でも釣り場名と数字が読めるように
-                            LinearGradient(colors: [ChartStyle.bg.opacity(skin.idleTopScrim), ChartStyle.bg.opacity(0)], startPoint: .top, endPoint: .bottom)
-                                .frame(height: full * 0.36).ignoresSafeArea()
-                        }
-                        .overlay(alignment: .bottom) {
-                            LinearGradient(stops: [.init(color: ChartStyle.bg.opacity(0), location: 0),
-                                                   .init(color: ChartStyle.bg.opacity(skin.idleBottomScrim * 0.82), location: 0.5),
-                                                   .init(color: ChartStyle.bg.opacity(skin.idleBottomScrim), location: 1)], startPoint: .top, endPoint: .bottom)
-                                .frame(height: full * (skin.idleFaceGap == nil ? 0.4 : 0.58)).ignoresSafeArea()
-                        }
+            idleContent(skin: skin, full: full)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 8)
+                // 中身は安全領域の高さにぴったり収める。背景は下に敷くだけで、並べ方には関わらせない
+                // （背景を同じ重ねに入れると、中身まで画面全体の高さで並び、下のボタンが切れていた。2026-11-11 開発者の指摘）
+                .frame(width: geo.size.width, height: geo.size.height)
+                .background(alignment: .top) {
+                    idleBackdrop(skin: skin, width: geo.size.width, full: full)
+                        .offset(y: -geo.safeAreaInsets.top)
                 }
-                ForEach(skin.idleEffects, id: \.self) { effect in
-                    HomeEffectField(kind: effect, count: effect == "fireflies" ? 16 : 10, color: ChartStyle.orange, speed: 0.8, amount: 0.8)
-                        .ignoresSafeArea().allowsHitTesting(false)
-                }
+        }
+    }
+
+    /// 待機中の背景：絵、上下の幕、効果。画面全体（安全領域の外まで）
+    private func idleBackdrop(skin: ChartSkinValues, width: CGFloat, full: CGFloat) -> some View {
+        ZStack {
+            if let background = ChartAssets.ui("bg_idle") {
+                Image(uiImage: background).resizable().scaledToFill()
+                    .frame(width: width, height: full)
+                    .clipped()
+                    .overlay(ChartStyle.bg.opacity(skin.idleDim))
+                    .overlay(alignment: .top) {
+                        // 上の幕：明るい空の上でも釣り場名と数字が読めるように
+                        LinearGradient(colors: [ChartStyle.bg.opacity(skin.idleTopScrim), ChartStyle.bg.opacity(0)], startPoint: .top, endPoint: .bottom)
+                            .frame(height: full * 0.36)
+                    }
+                    .overlay(alignment: .bottom) {
+                        LinearGradient(stops: [.init(color: ChartStyle.bg.opacity(0), location: 0),
+                                               .init(color: ChartStyle.bg.opacity(skin.idleBottomScrim * 0.82), location: 0.5),
+                                               .init(color: ChartStyle.bg.opacity(skin.idleBottomScrim), location: 1)], startPoint: .top, endPoint: .bottom)
+                            .frame(height: full * (skin.idleFaceGap == nil ? 0.4 : 0.58))
+                    }
+            }
+            ForEach(skin.idleEffects, id: \.self) { effect in
+                HomeEffectField(kind: effect, count: effect == "fireflies" ? 16 : 10, color: ChartStyle.orange, speed: 0.8, amount: 0.8)
+            }
+        }
+        .frame(width: width, height: full)
+        .allowsHitTesting(false)
+    }
+
+    private func idleContent(skin: ChartSkinValues, full: CGFloat) -> some View {
                 VStack(spacing: 0) {
                     topBar
                     // 顔を見せるテーマ：数字は上へ寄せ、数字の下を空ける。標準は均等
@@ -331,7 +351,7 @@ struct ChartHomeView: View {
                         }
                     }
                     .shadow(color: ChartStyle.bg.opacity(skin.idleFaceGap == nil ? 0 : 0.55), radius: 8, y: 1)
-                    if let gap = skin.idleFaceGap { Spacer(minLength: full * gap) } else { Spacer(minLength: 12) }
+                    if let gap = skin.idleFaceGap { Spacer(minLength: min(full * gap, 150)) } else { Spacer(minLength: 12) }
                     if skin.idleFaceGap == nil {
                         metrics
                     } else {
@@ -341,7 +361,7 @@ struct ChartHomeView: View {
                             .overlay(Capsule().strokeBorder(ChartStyle.border.opacity(0.75), lineWidth: 0.8))
                             .padding(.horizontal, -10)
                     }
-                    ChartForecastStrip(points: vm.points, tide: vm.tide, tideRange: vm.tideRange, now: vm.now, horizon: ChartViewModel.horizon, extremes: home.tideExtremes, scrub: scrubBinding)
+                    ChartForecastStrip(points: vm.points, tide: vm.tide, tideRange: vm.tideRange, now: vm.now, horizon: ChartViewModel.horizon, extremes: home.tideExtremes, twilight: vm.twilight, scrub: scrubBinding)
                         .frame(height: 124).padding(.top, 14)
                     if skin.idleFaceGap == nil { Spacer(minLength: 12) } else { Color.clear.frame(height: 12) }
                     startOrb
@@ -349,10 +369,6 @@ struct ChartHomeView: View {
                         .padding(.top, 14)
                     if skin.idleFaceGap == nil { Spacer(minLength: 8) } else { Color.clear.frame(height: 6) }
                 }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 8)
-            }
-        }
     }
 
     private var startOrb: some View {

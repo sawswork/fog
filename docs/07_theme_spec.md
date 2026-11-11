@@ -129,7 +129,7 @@
 
 | キー | 意味 |
 | --- | --- |
-| `colors` | `background`（地）`text` `sub` `dim`（文字の 3 段）`accent`（押すところ・釣れる時間・投げる場所）`tide`（潮）`panel`（札やボタンの面）`border`（輪郭線。書くとボタンが二重の縁になる）`onAccent`（強調色の面に載せる文字） |
+| `colors` | `background`（地）`text` `sub` `dim`（文字の 3 段）`accent`（押すところ・釣れる時間・投げる場所）`tide`（潮）`twilight`（グラフのマズメの帯。省略は黄 #F5C542）`panel`（札やボタンの面）`border`（輪郭線。書くとボタンが二重の縁になる）`onAccent`（強調色の面に載せる文字） |
 | `font` / `numberFont` | `default` / `serif` / `rounded` / `monospaced`。`serif` でも 12 pt より小さい字は標準の書体のまま（読みやすさ） |
 | `idleNumberSize` | 待機中の釣れ率の数字（pt、60〜140、省略 124） |
 | `idleFaceGap` | 待機中、数字の下に空ける高さ（画面の高さに対する割合、0〜0.4）。背景のキャラクターの顔を見せる。書くと、数字は上へ寄り、次の山と数字の行は半透明の札に載る |
