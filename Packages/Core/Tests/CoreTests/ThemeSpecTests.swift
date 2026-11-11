@@ -117,6 +117,34 @@ final class ThemeSpecTests: XCTestCase {
         XCTAssertEqual(again.screen, "chart")
     }
 
+    /// 海図の 1 画面の着せ替え（`chart`）：色・書体・待機中の配置。範囲外の値は収める
+    func testChartSkin() throws {
+        let json = ##"""
+        {"label":"シルフィ","screen":"chart",
+         "chart":{"colors":{"accent":"#F2B95F","tide":"#9AD7E8","border":"#C9CFD6AA","bad":"zzz"},
+                  "font":"serif","idleNumberSize":300,"idleFaceGap":0.9,"idleTopScrim":0.4,
+                  "idleEffects":["fireflies","sparkles"],"mapFrame":true,"menu":"panel"}}
+        """##
+        let spec = try ThemeSpec.parse(Data(json.utf8))
+        let skin = try XCTUnwrap(spec.chart)
+        XCTAssertTrue(spec.isChartScreen)
+        XCTAssertEqual(skin.parsedColors.count, 3)                 // 読めない色は捨てる
+        XCTAssertEqual(skin.parsedColors["border"]?.a ?? 0, Double(0xAA) / 255, accuracy: 0.001)
+        XCTAssertEqual(skin.resolvedIdleNumberSize, 140)
+        XCTAssertEqual(skin.resolvedIdleFaceGap, 0.4)
+        XCTAssertEqual(skin.resolvedIdleTopScrim, 0.4)
+        XCTAssertEqual(skin.resolvedIdleBottomScrim, 1)            // 省略は 1
+        XCTAssertEqual(skin.idleEffects ?? [], ["fireflies", "sparkles"])
+        XCTAssertTrue(skin.usesMenuPanel)
+        XCTAssertEqual(skin.mapFrame, true)
+        // chart の無い海図テーマは標準の見た目
+        let plain = try ThemeSpec.parse(Data(##"{"label":"海図","screen":"chart"}"##.utf8))
+        XCTAssertNil(plain.chart)
+        // 書き戻しても残る
+        let again = try JSONDecoder().decode(ThemeSpec.self, from: JSONEncoder().encode(spec))
+        XCTAssertEqual(again.chart, skin)
+    }
+
     func testStyleSection() throws {
         let spec = try ThemeSpec.parse(Data(#"{"style":{"chipTilt":-5,"chipPerspective":18,"glass":true,"chipOrnament":"✦","captureSymbol":"moon.fill"}}"#.utf8))
         XCTAssertEqual(spec.style?.chipTilt, -5)
