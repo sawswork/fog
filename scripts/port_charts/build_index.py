@@ -14,6 +14,10 @@ for f in sorted(glob.glob(os.path.join(src, '*.json'))):
     shutil.copyfile(jpg, os.path.join(charts_dir, d['id'] + '.jpg'))
     index.append({k: d[k] for k in ('id', 'name', 'lat', 'lon', 'widthM', 'heightM', 'cols', 'rows', 'water')})
 index.sort(key=lambda d: d['id'])
+# 索引に無い絵（枠を置き直して id が変わった港の古い絵）は消す
+keep = {d['id'] + '.jpg' for d in index}
+for old in glob.glob(os.path.join(charts_dir, '*.jpg')):
+    if os.path.basename(old) not in keep: os.remove(old)
 out = os.path.join(root, 'Packages', 'Core', 'Sources', 'Core', 'Data', 'port_charts.json')
 json.dump(index, open(out, 'w'), ensure_ascii=False, separators=(',', ':'))
 print(len(index), 'charts ->', out)

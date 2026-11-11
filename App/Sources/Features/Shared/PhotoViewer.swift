@@ -154,22 +154,38 @@ struct SessionMapSheet: View {
     @State private var moved = 0
 
     var body: some View {
-        let coords = session.track.map(\.coordinate).filter(\.isPlausible).map(\.cl)
-        let shown = catches.filter { $0.coordinate.isPlausible }
-        let center = coords.isEmpty ? shown.first?.coordinate.cl : coords[coords.count / 2]
+        // 軌跡は、飛び値を外して「立った場所」にまとめてから描く（測位が粗いと、線が数百 m 先へ飛んでぐちゃぐちゃになる）
+        let cleaned = TrackCleaner.clean(session.track, anchors: catches.map(\.coordinate), end: session.endedAt)
+        let shown = catches.filter { $0.coordinate.isPlausible }.sorted { $0.at < $1.at }
+        // 同じ場所で釣れた魚は、扇のようにずらして並べる
+        let fan = TrackCleaner.fanOut(shown.map(\.coordinate), radiusM: 10)
+        let lost = session.hookEvents.filter { $0.kind == .lost && $0.coordinate.isPlausible }
+        let all = cleaned.stays.map(\.coordinate) + shown.map(\.coordinate)
         ZStack(alignment: .top) {
             MapReader { proxy in
-                Map(initialPosition: .region(MKCoordinateRegion(center: center ?? CLLocationCoordinate2D(latitude: 41.77, longitude: 140.73), latitudinalMeters: 700, longitudinalMeters: 700)),
-                    interactionModes: [.pan, .zoom, .rotate]) {
-                    if coords.count >= 2 { MapPolyline(coordinates: coords).stroke(DS.Color.accent, lineWidth: 4) }
-                    ForEach(shown, id: \.id) { c in
-                        Annotation(c.species + (c.lengthCm.map { " \(Int($0.rounded()))" } ?? ""), coordinate: c.coordinate.cl) {
-                            Circle().fill(selectedCatchID == c.id && editing ? DS.Color.sun : DS.Color.accent).frame(width: 14, height: 14).overlay(Circle().stroke(.white, lineWidth: 2))
-                                .scaleEffect(selectedCatchID == c.id && editing ? 1.4 : 1)
+                Map(initialPosition: .region(SessionMapGeometry.region(fitting: all)), interactionModes: [.pan, .zoom, .rotate]) {
+                    if cleaned.path.count >= 2 {
+                        MapPolyline(coordinates: cleaned.path.map(\.cl)).stroke(Color.white.opacity(0.75), style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [5, 5]))
+                    }
+                    ForEach(cleaned.stays) { stay in
+                        Annotation("", coordinate: stay.coordinate.cl) { StayMarker(minutes: stay.minutes, compact: false) }
+                    }
+                    ForEach(lost, id: \.id) { e in
+                        Annotation("", coordinate: e.coordinate.cl) {
+                            Image(systemName: "xmark").font(.system(size: 9, weight: .heavy)).foregroundStyle(.white)
+                                .frame(width: 16, height: 16).background(Color.black.opacity(0.55), in: Circle())
                         }
                     }
-                    ForEach(session.hookEvents.filter { $0.kind == .lost && $0.coordinate.isPlausible }, id: \.id) { e in
-                        Annotation("", coordinate: e.coordinate.cl) { Circle().fill(.white).frame(width: 8, height: 8) }
+                    ForEach(Array(shown.enumerated()), id: \.element.id) { index, c in
+                        let picked = selectedCatchID == c.id && editing
+                        Annotation(c.species + (c.lengthCm.map { " \(Int($0.rounded()))" } ?? ""), coordinate: c.coordinate.cl) {
+                            Text("\(index + 1)").font(.system(size: 12, weight: .bold)).foregroundStyle(.black)
+                                .frame(width: 24, height: 24)
+                                .background(picked ? DS.Color.sun : DS.Color.accent, in: Circle())
+                                .overlay(Circle().stroke(.white, lineWidth: 2))
+                                .scaleEffect(picked ? 1.3 : 1)
+                                .offset(SessionMapGeometry.fanOffset(index: fan[index].index, count: fan[index].count))
+                        }
                     }
                 }
                 .mapStyle(.hybrid(elevation: .flat, pointsOfInterest: .excludingAll))
@@ -187,7 +203,15 @@ struct SessionMapSheet: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(spotName).font(DS.Font.number(18)).foregroundStyle(.white)
-                        Text("\(session.catches.count)尾 · 軌跡 \(coords.count) 点").font(DS.Font.caption).foregroundStyle(.white.opacity(0.75))
+                        Text("\(session.catches.count)尾 · 立った場所 \(cleaned.stays.count) か所" + (cleaned.dropped > 0 ? " · 飛んだ位置 \(cleaned.dropped) 点を除外" : ""))
+                            .font(DS.Font.caption).foregroundStyle(.white.opacity(0.75))
+                        // 凡例
+                        HStack(spacing: 10) {
+                            HStack(spacing: 4) { Circle().fill(Color.white.opacity(0.3)).overlay(Circle().stroke(.white, lineWidth: 1)).frame(width: 11, height: 11); Text("立った場所（分）") }
+                            HStack(spacing: 4) { Circle().fill(DS.Color.accent).frame(width: 11, height: 11); Text("釣果（釣れた順）") }
+                            if !lost.isEmpty { HStack(spacing: 3) { Image(systemName: "xmark").font(.system(size: 8, weight: .heavy)); Text("ロスト") } }
+                        }
+                        .font(.system(size: 10, weight: .medium)).foregroundStyle(.white.opacity(0.85))
                     }
                     .padding(DS.Spacing.m).background(Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
                     Spacer()
@@ -240,3 +264,53 @@ struct SessionMapSheet: View {
         .background(Color.black.opacity(editing ? 0.55 : 0), in: RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous))
     }
 }
+
+/// 立った場所の印：丸の大きさは滞在時間。5 分以上は分数を中に書く
+struct StayMarker: View {
+    let minutes: Int
+    /// 小さい地図用（数字なし・小さめ）
+    var compact = false
+
+    var body: some View {
+        let d: CGFloat = compact ? 10 + min(14, CGFloat(Double(minutes).squareRoot()) * 1.8) : 18 + min(30, CGFloat(Double(minutes).squareRoot()) * 3.4)
+        ZStack {
+            Circle().fill(Color.white.opacity(0.24))
+            Circle().stroke(Color.white.opacity(0.95), lineWidth: compact ? 1 : 1.5)
+            if !compact, minutes >= 5 {
+                Text("\(minutes)").font(.system(size: 10, weight: .bold)).foregroundStyle(.white).shadow(color: .black.opacity(0.7), radius: 1.5)
+            }
+        }
+        .frame(width: d, height: d)
+    }
+}
+
+/// 釣行の地図の範囲と、重なる印のずらし方
+enum SessionMapGeometry {
+    /// 点が全部入る範囲（余白つき。狭すぎないよう 220 m 以上）
+    static func region(fitting points: [Coordinate]) -> MKCoordinateRegion {
+        let valid = points.filter(\.isPlausible)
+        guard let first = valid.first else {
+            return MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 41.77, longitude: 140.73), latitudinalMeters: 700, longitudinalMeters: 700)
+        }
+        var minLat = first.latitude, maxLat = first.latitude, minLon = first.longitude, maxLon = first.longitude
+        for p in valid {
+            minLat = min(minLat, p.latitude); maxLat = max(maxLat, p.latitude)
+            minLon = min(minLon, p.longitude); maxLon = max(maxLon, p.longitude)
+        }
+        let center = CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2)
+        let northSouth = (maxLat - minLat) * 111_132
+        let eastWest = (maxLon - minLon) * 111_320 * cos(center.latitude * .pi / 180)
+        let span = max(220, max(northSouth, eastWest) * 1.6)
+        return MKCoordinateRegion(center: center, latitudinalMeters: span, longitudinalMeters: span)
+    }
+
+    /// 同じ場所の印の k 番目（全 n 個）を、上向きの扇に並べるずれ（pt）
+    static func fanOffset(index k: Int, count n: Int) -> CGSize {
+        guard n > 1 else { return .zero }
+        let step = min(40.0, 150.0 / Double(n - 1))
+        let angle = (-90.0 + (Double(k) - Double(n - 1) / 2) * step) * .pi / 180
+        let radius = n > 4 ? 40.0 : 30.0
+        return CGSize(width: cos(angle) * radius, height: sin(angle) * radius)
+    }
+}
+

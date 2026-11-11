@@ -32,6 +32,12 @@ struct ChartHomeView: View {
     @State private var endProgress: CGFloat = 0
     @State private var orbPulse = false
     @State private var menuOpen = false
+    /// この釣行の釣果の一覧と、1 尾の修正
+    @State private var showCatches = false
+    @State private var editingCatch: Catch?
+    /// 釣行中に画面を見ている間は、位置を高精度で取る（現在地と立ち位置のため）。離れたら戻す
+    @State private var holdingLocation = false
+    @Environment(\.scenePhase) private var scenePhase
     /// 声で記録・相談（F-65）
     @State private var voice = SpeechRecorder()
     @State private var voiceOpen = false
@@ -51,7 +57,13 @@ struct ChartHomeView: View {
             if voiceOpen { voiceCard.transition(.opacity.combined(with: .move(edge: .bottom))) }
         }
         .preferredColorScheme(.dark)
-        .onDisappear { stopVoice() }
+        .onDisappear { stopVoice(); syncLocationHold(visible: false) }
+        .onChange(of: scenePhase) { _, _ in syncLocationHold(visible: true) }
+        .onChange(of: home.isRecording) { _, _ in syncLocationHold(visible: true) }
+        .sheet(isPresented: $showCatches) { ChartCatchesSheet().presentationDetents([.medium, .large]) }
+        .sheet(item: $editingCatch) { item in
+            CatchEditSheet(catchItem: item) { Task { await reload() } }.presentationDetents([.large])
+        }
         .onAppear {
             home.attach(services)
             vm.update(services: services)
@@ -92,6 +104,15 @@ struct ChartHomeView: View {
         await home.refresh()
         vm.update(services: services)
         detectNewCatch()
+        syncLocationHold(visible: true)
+    }
+
+    /// 釣行中で、この画面が前面にある間だけ高精度の位置を使う
+    private func syncLocationHold(visible: Bool) {
+        let want = visible && home.isRecording && scenePhase == .active
+        guard want != holdingLocation else { return }
+        holdingLocation = want
+        if want { services.location.beginForegroundUpdates() } else { services.location.endForegroundUpdates() }
     }
 
     /// 記録中に釣果が増えたら、確認のカードを出す（撮影画面から戻ったとき・標準カメラの写真の取り込み）
@@ -571,8 +592,18 @@ struct ChartHomeView: View {
     /// 今日釣れた魚の小さな写真（新しい 3 尾）
     private var thumbnails: some View {
         let pins = Array(vm.today.suffix(3))
-        return HStack(spacing: 6) {
+        // タップで、この釣行の釣果の一覧（写真を見る・魚種やサイズを直す）
+        return HStack(spacing: 0) {
             Spacer(minLength: 0)
+            Button { showCatches = true } label: { thumbnailRow(pins) }
+                .buttonStyle(.plain)
+                .disabled(vm.today.isEmpty)
+                .accessibilityLabel("この釣行の釣果を見る")
+        }
+    }
+
+    private func thumbnailRow(_ pins: [ChartViewModel.CatchPin]) -> some View {
+        HStack(spacing: 6) {
             if !vm.today.isEmpty {
                 Text("\(vm.today.count) 尾").font(ChartStyle.font(11.5, .semibold)).foregroundStyle(ChartStyle.white)
                     .shadow(color: .black.opacity(0.85), radius: 2, y: 1)
@@ -614,6 +645,14 @@ struct ChartHomeView: View {
                 Text("\(t.number) 尾目 · \(JPFormat.hm(t.at)) · 記録しました").font(ChartStyle.font(11, .medium)).foregroundStyle(ChartStyle.gray1)
             }
             Spacer(minLength: 0)
+            Button {
+                if let item = home.liveSession?.catches.first(where: { $0.id == t.id }) ?? (try? services.store.activeSession())?.catches.first(where: { $0.id == t.id }) {
+                    editingCatch = item
+                }
+            } label: {
+                Text("直す").font(ChartStyle.font(11.5, .semibold)).foregroundStyle(ChartStyle.orange).padding(.vertical, 10).padding(.horizontal, 6)
+            }
+            .buttonStyle(.plain)
             Button {
                 let id = t.id
                 withAnimation { toast = nil }
@@ -749,3 +788,86 @@ struct ChartHomeView: View {
         .preferredColorScheme(.dark)
     }
 }
+
+/// この釣行の釣果の一覧（釣行中に、撮った魚を見たり直したりする）。写真をタップで拡大、行をタップで修正
+struct ChartCatchesSheet: View {
+    @Environment(AppServices.self) private var services
+    @Environment(\.dismiss) private var dismiss
+    @State private var catches: [Catch] = []
+    @State private var editing: Catch?
+    @State private var viewing: Catch?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.m) {
+            HStack {
+                Text("この釣行の釣果 \(catches.count) 尾").font(.system(size: 18, weight: .bold)).foregroundStyle(DS.Color.textPrimary)
+                Spacer()
+                Button { dismiss() } label: { Image(systemName: "xmark").foregroundStyle(DS.Color.textSecondary).frame(width: 32, height: 32) }.buttonStyle(.plain)
+            }
+            Text("写真をタップで拡大、行をタップで魚種・サイズ・釣った人・リグを直せます").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+            ScrollView {
+                VStack(spacing: DS.Spacing.s) {
+                    ForEach(catches) { c in CatchRow(item: c, onPhoto: { viewing = c }, onEdit: { editing = c }) }
+                    if catches.isEmpty { Text("まだ釣果がありません").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary).padding(.top, DS.Spacing.l) }
+                }
+            }
+        }
+        .padding(DS.Spacing.l)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(ThemeBackground(name: .bgDetail))
+        .onAppear(perform: reload)
+        .onReceive(NotificationCenter.default.publisher(for: .fogStoreDidChange)) { _ in reload() }
+        .sheet(item: $editing) { item in CatchEditSheet(catchItem: item) { reload() }.presentationDetents([.large]) }
+        .fullScreenCover(item: $viewing) { item in PhotoViewer(catchItem: item) }
+    }
+
+    private func reload() {
+        catches = ((try? services.store.activeSession())?.catches ?? []).sorted { $0.at > $1.at }
+    }
+}
+
+/// 釣果 1 尾の行：写真・時刻・魚種・サイズ・釣った人。写真はタップで拡大、行はタップで修正（海図の一覧とログの釣行詳細で使う）
+struct CatchRow: View {
+    let item: Catch
+    let onPhoto: () -> Void
+    let onEdit: () -> Void
+    @Environment(AppServices.self) private var services
+
+    var body: some View {
+        HStack(spacing: DS.Spacing.m) {
+            Group {
+                if let data = services.store.thumbnail(catchID: item.id), let ui = UIImage(data: data) {
+                    Image(uiImage: ui).resizable().scaledToFill().frame(width: 56, height: 56).clipShape(RoundedRectangle(cornerRadius: DS.Radius.chip))
+                } else {
+                    RoundedRectangle(cornerRadius: DS.Radius.chip).fill(DS.Color.surface).frame(width: 56, height: 56)
+                        .overlay(Image(systemName: "fish.fill").foregroundStyle(DS.Color.textTertiary))
+                }
+            }
+            .onTapGesture(perform: onPhoto)
+            Button(action: onEdit) {
+                HStack(spacing: DS.Spacing.s) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: DS.Spacing.s) {
+                            Text(item.species.isEmpty ? "魚種なし" : item.species).font(.system(size: 16, weight: .semibold)).foregroundStyle(DS.Color.textPrimary)
+                            if let a = item.angler, !a.isEmpty {
+                                Text(a).font(.system(size: 10, weight: .semibold)).foregroundStyle(DS.Color.background)
+                                    .padding(.horizontal, 6).padding(.vertical, 2).background(DS.Color.sun, in: Capsule())
+                            }
+                        }
+                        HStack(spacing: DS.Spacing.s) {
+                            Text(JPFormat.hm(item.at)).font(DS.Font.number(13)).foregroundStyle(DS.Color.textSecondary)
+                            Text(item.lengthCm.map { "\(Int($0.rounded())) cm" } ?? "未計測").font(DS.Font.number(15)).foregroundStyle(item.lengthCm == nil ? DS.Color.textTertiary : DS.Color.accent)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: "pencil").font(.system(size: 14, weight: .semibold)).foregroundStyle(DS.Color.textTertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(DS.Spacing.s)
+        .background(DS.Color.surface.opacity(0.6), in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
+    }
+}
+
