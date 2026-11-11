@@ -35,6 +35,12 @@ final class ChartViewModel {
         var windName: String?
     }
 
+    /// マズメの帯（朝：市民薄明の始まり〜日の出 30 分後、夕：日の入 30 分前〜市民薄明の終わり。ホームのグラフと同じ定義）
+    struct TwilightBand: Hashable {
+        let start: Date
+        let end: Date
+    }
+
     /// 潮位の線の 1 点
     struct TideSample: Hashable {
         let at: Date
@@ -62,6 +68,8 @@ final class ChartViewModel {
     /// 今から 9 時間の潮位（10 分おき）と、線の縦の範囲
     private(set) var tide: [TideSample] = []
     private(set) var tideRange: ClosedRange<Double> = 0...200
+    /// 今から 9 時間にかかるマズメ
+    private(set) var twilight: [TwilightBand] = []
     private(set) var scoreNow = 0
     private(set) var advice = ""
     private(set) var lostCount = 0
@@ -101,6 +109,7 @@ final class ChartViewModel {
         }
 
         updateTide(services: services)
+        twilight = Self.twilightBands(from: now, to: end, coordinate: coordinate)
 
         // 図：その釣り場（か現在地）を写している海図。無ければ Apple の地図
         let catalog = PortChartCatalog.bundled()
@@ -174,6 +183,20 @@ final class ChartViewModel {
         case "partlyCloudy": return night ? "cloud.moon.fill" : "cloud.sun.fill"
         default: return HomeViewModel.weatherSymbol(code)
         }
+    }
+
+    /// その時間にかかるマズメの帯。日をまたぐので、前日・当日・翌日の太陽の時刻から拾う
+    static func twilightBands(from start: Date, to end: Date, coordinate: Coordinate) -> [TwilightBand] {
+        guard coordinate.isPlausible else { return [] }
+        let zone = TimeZone(identifier: "Asia/Tokyo") ?? .current
+        var out: [TwilightBand] = []
+        for offset in [-1.0, 0.0, 1.0] {
+            let sun = SunCalculator.times(on: start.addingTimeInterval(offset * 86_400), at: coordinate, timeZone: zone)
+            if let dawn = sun.civilDawn, let rise = sun.sunrise { out.append(TwilightBand(start: dawn, end: rise.addingTimeInterval(30 * 60))) }
+            if let set = sun.sunset, let dusk = sun.civilDusk { out.append(TwilightBand(start: set.addingTimeInterval(-30 * 60), end: dusk)) }
+        }
+        var seen = Set<TwilightBand>()
+        return out.filter { $0.end > start && $0.start < end && $0.end > $0.start && seen.insert($0).inserted }.sorted { $0.start < $1.start }
     }
 
     /// 今から 9 時間の潮位。5 分ごとに作り直す（調和推算を 55 回。軽い）

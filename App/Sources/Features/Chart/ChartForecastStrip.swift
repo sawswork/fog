@@ -2,7 +2,7 @@ import SwiftUI
 import Core
 
 /// これから 9 時間のグラフ（F-63）。1 つの枠に、釣れ率の線（白。いちばん良い時間帯はオレンジ）と潮位の線（水色）を重ねる。
-/// 満潮・干潮は、潮位の線の山と谷に時刻だけを出す。下の時刻は 3 時間おき。なぞるとその時刻を返し、離すと nil（今）に戻す
+/// 満潮・干潮は、潮位の線の山と谷に時刻だけを出す。マズメの時間帯は背景に色を付ける。下の時刻は 3 時間おき。なぞるとその時刻を返し、離すと nil（今）に戻す
 struct ChartForecastStrip: View {
     let points: [ScorePoint]
     let tide: [ChartViewModel.TideSample]
@@ -10,6 +10,8 @@ struct ChartForecastStrip: View {
     let now: Date
     let horizon: TimeInterval
     let extremes: [TideExtreme]
+    /// マズメの帯（背景に色を付ける）
+    var twilight: [ChartViewModel.TwilightBand] = []
     @Binding var scrub: Date?
 
     private static let labelHeight: CGFloat = 16
@@ -23,6 +25,7 @@ struct ChartForecastStrip: View {
             let hasTide = tide.count >= 2
             let best = bestRange()
             ZStack(alignment: .topLeading) {
+                twilightBands(w: w, plot: h)
                 hourGrid(w: w, plot: h)
                 areaPath(points, w: w, h: h).fill(LinearGradient(colors: [Color.white.opacity(0.18), Color.white.opacity(0)], startPoint: .top, endPoint: .bottom))
                 if let best {
@@ -146,6 +149,29 @@ struct ChartForecastStrip: View {
             t += 3600
         }
         return out
+    }
+
+    /// マズメの時間帯：枠の背景に色（上が濃く、下へ薄く）と、上の端に細い線。文字は出さない
+    private func twilightBands(w: CGFloat, plot: CGFloat) -> some View {
+        let end = now.addingTimeInterval(horizon)
+        let spans: [(x: CGFloat, width: CGFloat)] = twilight.compactMap { band -> (x: CGFloat, width: CGFloat)? in
+            let a = max(band.start, now), b = min(band.end, end)
+            guard b > a else { return nil }
+            let x0 = x(a, w), x1 = x(b, w)
+            return x1 - x0 >= 1 ? (x0, x1 - x0) : nil
+        }
+        return ZStack(alignment: .topLeading) {
+            Color.clear
+            ForEach(Array(spans.enumerated()), id: \.offset) { _, span in
+                Rectangle()
+                    .fill(LinearGradient(colors: [ChartStyle.twilight.opacity(0.34), ChartStyle.twilight.opacity(0.10)], startPoint: .top, endPoint: .bottom))
+                    .frame(width: span.width, height: plot)
+                    .overlay(alignment: .top) { Rectangle().fill(ChartStyle.twilight.opacity(0.9)).frame(height: 1.5) }
+                    .offset(x: span.x)
+            }
+        }
+        .frame(width: w, height: plot, alignment: .topLeading)
+        .allowsHitTesting(false)
     }
 
     /// 3 時間おきの薄い縦線

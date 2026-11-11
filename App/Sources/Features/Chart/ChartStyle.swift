@@ -12,6 +12,8 @@ struct ChartSkinValues {
     var accent = Color(red: 1.0, green: 0.478, blue: 0.102)
     /// 潮
     var tide = Color(red: 0.39, green: 0.84, blue: 0.90)
+    /// マズメの帯（標準は黄 #F5C542）
+    var twilight = Color(red: 0.96, green: 0.77, blue: 0.26)
     var panel = Color(red: 0.055, green: 0.082, blue: 0.11)
     /// 面の輪郭線。nil は標準（薄い白）
     var border: Color?
@@ -47,6 +49,7 @@ struct ChartSkinValues {
         }
         bg = color("background", bg); text = color("text", text); sub = color("sub", sub); dim = color("dim", dim)
         accent = color("accent", accent); tide = color("tide", tide); panel = color("panel", panel)
+        twilight = color("twilight", twilight)
         onAccent = color("onAccent", bg)
         if colors["border"] != nil { border = color("border", .white) }
         design = Self.design(skin.font) ?? .default
@@ -86,6 +89,7 @@ enum ChartStyle {
     static var orange: Color { skin.accent }
     static var cyan: Color { skin.tide }
     static var panel: Color { skin.panel }
+    static var twilight: Color { skin.twilight }
     /// 面の輪郭線（テーマが決めていなければ薄い白）
     static var border: Color { skin.border ?? Color.white.opacity(0.13) }
     static var onAccent: Color { skin.onAccent }
