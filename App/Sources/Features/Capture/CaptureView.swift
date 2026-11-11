@@ -131,29 +131,14 @@ struct CaptureView: View {
         .frame(width: 110)
     }
 
+    /// リグの選択：フック・シンカー・ワームを登録から選ぶ（`RigPickerSheet`）
     private var rigPicker: some View {
-        VStack(alignment: .leading, spacing: DS.Spacing.s) {
-            if model.rigs.isEmpty {
-                Text("設定でリグを登録すると選べます").font(DS.Font.label).foregroundStyle(DS.Color.textTertiary)
-            }
-            ForEach(model.rigs) { r in
-                Button { model.selectRig(r); showRigPicker = false } label: {
-                    HStack {
-                        Text(r.displayName).font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
-                        Spacer()
-                        if model.rig?.id == r.id { Circle().fill(DS.Color.accent).frame(width: 8, height: 8) }
-                    }
-                    .padding(DS.Spacing.m)
-                    .background(DS.Color.surface, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous)).themeOutline(DS.Radius.chip)
-                }
-                .buttonStyle(.plain)
-            }
-            Spacer()
+        RigPickerSheet(rigs: model.rigs, current: model.rig) { hook, sinker, worm in
+            model.selectParts(hook: hook, sinker: sinker, worm: worm)
         }
-        .padding(DS.Spacing.l)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(DS.Color.background)
-        .presentationDetents([.medium])
+        .presentationDetents([.fraction(0.72), .large])
+        .presentationDragIndicator(.visible)
+        .preferredColorScheme(ThemeStore.shared.theme.colorScheme)
     }
 }
 

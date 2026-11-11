@@ -119,7 +119,8 @@ struct TackleSettingsView: View {
     @State private var editingTackle: Tackle?
     @State private var editingRig: Rig?
     @State private var editingItem: InventoryItem?
-    static let maxRigs = 10
+    /// リグの部品の登録（撮影画面のリグのシートで選ぶ）
+    @State private var parts = RigPartsStore.load()
 
     var body: some View {
         SettingsPage(title: "タックル") {
@@ -149,25 +150,71 @@ struct TackleSettingsView: View {
                     .settingsRow()
                 } header: { SectionLabel(text: "タックル") }
 
+                // リグの部品：ここで登録しておくと、撮影画面のリグのシートでタップして選べる
+                Section {
+                    ForEach(parts.hooks, id: \.self) { h in
+                        Text("#" + h).font(DS.Font.label).foregroundStyle(DS.Color.textPrimary).settingsRow()
+                    }
+                    .onDelete { idx in idx.map { parts.hooks[$0] }.forEach { parts.removeHook($0) }; RigPartsStore.save(parts) }
+                    RigPartAddRow(kind: .hook) { a, _, _ in
+                        let ok = parts.addHook(a)
+                        if ok { RigPartsStore.save(parts) }
+                        return ok
+                    }
+                    .settingsRow()
+                } header: { SectionLabel(text: "フック（大きさ）") }
+
+                Section {
+                    ForEach(parts.sinkers, id: \.self) { g in
+                        Text(RigParts.gramsText(g) + " g").font(DS.Font.label).foregroundStyle(DS.Color.textPrimary).settingsRow()
+                    }
+                    .onDelete { idx in idx.map { parts.sinkers[$0] }.forEach { parts.removeSinker($0) }; RigPartsStore.save(parts) }
+                    RigPartAddRow(kind: .sinker) { a, _, _ in
+                        let ok = parts.addSinker(a)
+                        if ok { RigPartsStore.save(parts) }
+                        return ok
+                    }
+                    .settingsRow()
+                } header: { SectionLabel(text: "シンカー（重さ）") }
+
+                Section {
+                    ForEach(parts.worms) { w in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(w.maker.isEmpty ? w.label : w.maker).font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
+                            if !w.maker.isEmpty, !(w.size + w.color).isEmpty {
+                                Text([w.size, w.color].filter { !$0.isEmpty }.joined(separator: " · ")).font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+                            }
+                        }
+                        .settingsRow()
+                    }
+                    .onDelete { idx in idx.map { parts.worms[$0] }.forEach { parts.removeWorm(id: $0.id) }; RigPartsStore.save(parts) }
+                    RigPartAddRow(kind: .worm) { a, b, c in
+                        let ok = parts.addWorm(maker: a, size: b, color: c) != nil
+                        if ok { RigPartsStore.save(parts) }
+                        return ok
+                    }
+                    .settingsRow()
+                    Text("登録したフック・シンカー・ワームは、撮影画面の右下の「リグ」から選べます。選んだ組み合わせは釣果に付き、下の「これまでの組み合わせ」に残ります")
+                        .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary).settingsRow()
+                } header: { SectionLabel(text: "ワーム（メーカー・サイズ・色）") }
+
                 Section {
                     ForEach(rigs) { r in
                         Button { editingRig = r } label: {
                             HStack {
                                 Text(r.displayName).font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
                                 Spacer()
-                                Text(r.hookSize.isEmpty ? "" : "#\(r.hookSize)").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+                                Text(r.hookSize.isEmpty ? "" : (r.hookSize.hasPrefix("#") ? r.hookSize : "#" + r.hookSize)).font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
                             }
                         }
                         .settingsRow()
                     }
                     .onDelete { idx in idx.map { rigs[$0] }.forEach { try? services.store.deleteRig(id: $0.id) }; reload() }
-                    if rigs.count < Self.maxRigs {
-                        Button { editingRig = Rig(sinkerGrams: 14, hookSize: "", worm: "", sortOrder: rigs.count) } label: {
-                            Label("リグを追加", systemImage: "plus").font(DS.Font.label).foregroundStyle(DS.Color.accent)
-                        }
-                        .settingsRow()
+                    Button { editingRig = Rig(sinkerGrams: 14, hookSize: "", worm: "", sortOrder: (rigs.map(\.sortOrder).max() ?? -1) + 1) } label: {
+                        Label("組み合わせを手で追加", systemImage: "plus").font(DS.Font.label).foregroundStyle(DS.Color.accent)
                     }
-                } header: { SectionLabel(text: "リグプリセット \(rigs.count)/\(Self.maxRigs)") }
+                    .settingsRow()
+                } header: { SectionLabel(text: "これまでの組み合わせ \(rigs.count)") }
 
                 // 在庫（F-26）：針ロストでそのリグのシンカーとフックが 1 つ減る
                 Section {
@@ -205,6 +252,7 @@ struct TackleSettingsView: View {
     private func reload() {
         tackles = (try? services.store.tackles()) ?? []
         rigs = ((try? services.store.rigs()) ?? []).sorted { $0.sortOrder < $1.sortOrder }
+        parts = RigPartsStore.load()
     }
 }
 
@@ -674,6 +722,7 @@ struct AnglerSettingsView: View {
     @State private var ownName = AnglerSettings.ownName
     @State private var members = AnglerSettings.members
     @State private var newMember = ""
+    @FocusState private var memberFocused: Bool
     @State private var sharing = PartyService.isEnabled
     @State private var syncing = false
 
@@ -694,9 +743,13 @@ struct AnglerSettingsView: View {
                     .onDelete { idx in idx.map { members[$0] }.forEach { AnglerSettings.remove(member: $0) }; members = AnglerSettings.members }
                     HStack {
                         TextField("いっしょに釣る人の名前", text: $newMember).font(DS.Font.label)
-                        Button("追加") { AnglerSettings.add(member: newMember); members = AnglerSettings.members; newMember = "" }
+                            .focused($memberFocused)
+                            .submitLabel(.done)
+                            .onSubmit { addMember() }
+                        // 一覧の行の中のボタンは、既定の形だと行全体（入力欄を含む）とタップを取り合う。枠なしの形にして、ボタンだけが反応するようにする
+                        Button("追加") { addMember() }
+                            .buttonStyle(.borderless)
                             .font(DS.Font.label).foregroundStyle(DS.Color.accent)
-                            .disabled(newMember.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                     .settingsRow()
                     Text("撮影画面の上の名前をタップして、誰の魚かを選びます。他の人の魚は図鑑・自己記録・釣れ率の学習には入れず、釣行の尾数と共有にだけ入ります")
@@ -740,6 +793,19 @@ struct AnglerSettingsView: View {
             .listStyle(.plain)
         }
         .onDisappear { AnglerSettings.ownName = ownName }
+    }
+
+    /// 釣り人を足す。入力欄からフォーカスを外して日本語入力の変換を確定させてから読む
+    /// （変換中は文字がまだ入っておらず、「追加」を押しても足されないことがあった。2026-11-11 開発者の指摘）
+    private func addMember() {
+        memberFocused = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+            let name = newMember.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty else { return }
+            AnglerSettings.add(member: name)
+            members = AnglerSettings.members
+            newMember = ""
+        }
     }
 }
 

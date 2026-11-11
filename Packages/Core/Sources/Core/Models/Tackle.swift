@@ -46,10 +46,14 @@ public struct Rig: Codable, Identifiable, Hashable, Sendable {
         self.sortOrder = sortOrder
     }
 
-    /// 撮影画面のリグチップ表示（例: 「14g バグアンツ3"」）。
+    /// 撮影画面のリグチップ表示（例: 「14g バグアンツ3"」）。シンカーが無ければ重さは出さず、
+    /// 重さもワームも無いフックだけの組み合わせは「#1/0」
     public var displayName: String {
         if !name.isEmpty { return name }
-        let grams = sinkerGrams.rounded() == sinkerGrams ? String(Int(sinkerGrams)) : String(sinkerGrams)
-        return worm.isEmpty ? "\(grams)g" : "\(grams)g \(worm)"
+        var parts: [String] = []
+        if sinkerGrams > 0 { parts.append((sinkerGrams.rounded() == sinkerGrams ? String(Int(sinkerGrams)) : String(sinkerGrams)) + "g") }
+        if !worm.isEmpty { parts.append(worm) }
+        if parts.isEmpty, !hookSize.isEmpty { parts.append(hookSize.hasPrefix("#") ? hookSize : "#" + hookSize) }
+        return parts.isEmpty ? "リグ" : parts.joined(separator: " ")
     }
 }

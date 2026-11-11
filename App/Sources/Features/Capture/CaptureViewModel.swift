@@ -41,7 +41,9 @@ final class CaptureViewModel {
         if capture == nil { capture = services.capture }
         tackle = services.capture.currentTackle ?? ((try? services.store.sessions())?.first?.tackle) ?? .spinning
         rigs = (try? services.store.rigs()) ?? []
-        rig = rigs.first { $0.id == services.capture.currentRigID } ?? rigs.first
+        // 前に「どれも なし」にしていたら、勝手に先頭のリグを選ばない
+        let cleared = UserDefaults.standard.bool(forKey: RigPartsStore.clearedKey)
+        rig = rigs.first { $0.id == services.capture.currentRigID } ?? (cleared ? nil : rigs.first)
         spotName = services.detection.activeSpotName ?? ""
         anglerCandidates = AnglerSettings.candidates
         angler = services.capture.currentAngler ?? AnglerSettings.ownName
@@ -134,6 +136,22 @@ final class CaptureViewModel {
     func selectRig(_ r: Rig) {
         rig = r
         capture?.currentRigID = r.id
+        UserDefaults.standard.set(false, forKey: RigPartsStore.clearedKey)
+    }
+
+    /// リグのシートで選んだ部品の組み合わせにする。同じ組み合わせのリグがあればそれ、無ければ作る。どれも nil ならリグなし
+    func selectParts(hook: String?, sinker: Double?, worm: String?) {
+        guard let resolved = Rig.resolve(hook: hook, sinkerGrams: sinker, worm: worm, in: rigs) else {
+            rig = nil
+            capture?.currentRigID = nil
+            UserDefaults.standard.set(true, forKey: RigPartsStore.clearedKey)
+            return
+        }
+        if resolved.isNew {
+            try? store?.upsert(resolved.rig)
+            rigs.append(resolved.rig)
+        }
+        selectRig(resolved.rig)
     }
 
     func select(angler name: String) {
