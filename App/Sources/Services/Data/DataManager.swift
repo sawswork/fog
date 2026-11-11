@@ -107,7 +107,7 @@ final class DataManager {
     /// 全データ削除（分析に即時反映）。キャッシュと設定も消す。
     func deleteAll() throws {
         try store.deleteAll()
-        for key in ["fog.didSeedSampleSession", "fog.didRemoveSampleSession", "fog.importedPhotoIdentifiers", "fog.speciesCorrections", "fog.currentTackle", "fog.currentRig", "fog.homeSpotID"] {
+        for key in ["fog.didSeedSampleSession", "fog.didRemoveSampleSession", "fog.importedPhotoIdentifiers", "fog.speciesCorrections", "fog.currentTackle", "fog.currentRig", "fog.homeSpotID", "fog.rigParts", "fog.rigCleared"] {
             UserDefaults.standard.removeObject(forKey: key)
         }
         FogShared.currentTackle = nil
