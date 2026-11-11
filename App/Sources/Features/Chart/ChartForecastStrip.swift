@@ -1,8 +1,8 @@
 import SwiftUI
 import Core
 
-/// これから 9 時間の線（F-63）。上の段は釣れ率（いちばん良い時間帯をオレンジ）、下の段は潮位（満潮・干潮の時刻と高さ）。
-/// 時刻は 3 時間おき。なぞるとその時刻を返し、離すと nil（今）に戻す
+/// これから 9 時間のグラフ（F-63）。1 つの枠に、釣れ率の線（白。いちばん良い時間帯はオレンジ）と潮位の線（水色）を重ねる。
+/// 満潮・干潮は、潮位の線の山と谷に時刻だけを出す。下の時刻は 3 時間おき。なぞるとその時刻を返し、離すと nil（今）に戻す
 struct ChartForecastStrip: View {
     let points: [ScorePoint]
     let tide: [ChartViewModel.TideSample]
@@ -13,22 +13,18 @@ struct ChartForecastStrip: View {
     @Binding var scrub: Date?
 
     private static let labelHeight: CGFloat = 16
-    /// 潮の段の上に空けておく高さ（満潮・干潮の文字が入る）
-    private static let tideHeadroom: CGFloat = 12
+    /// 枠の上に空けておく高さ（満潮の時刻の文字が入る）
+    private static let tideHeadroom: CGFloat = 13
 
     var body: some View {
         GeometryReader { geo in
             let w = geo.size.width
-            let plot = max(20, geo.size.height - Self.labelHeight)
+            let h = max(20, geo.size.height - Self.labelHeight)
             let hasTide = tide.count >= 2
-            // 上の段：釣れ率。下の段：潮位
-            let h = hasTide ? (plot * 0.54).rounded() : plot
-            let tideTop = h + 5
-            let tideBottom = plot
             let best = bestRange()
             ZStack(alignment: .topLeading) {
-                hourGrid(w: w, plot: plot)
-                areaPath(points, w: w, h: h).fill(LinearGradient(colors: [Color.white.opacity(0.20), Color.white.opacity(0)], startPoint: .top, endPoint: .bottom))
+                hourGrid(w: w, plot: h)
+                areaPath(points, w: w, h: h).fill(LinearGradient(colors: [Color.white.opacity(0.18), Color.white.opacity(0)], startPoint: .top, endPoint: .bottom))
                 if let best {
                     areaPath(Array(points[best]), w: w, h: h)
                         .fill(LinearGradient(colors: [ChartStyle.orange.opacity(0.55), ChartStyle.orange.opacity(0)], startPoint: .top, endPoint: .bottom))
@@ -38,27 +34,26 @@ struct ChartForecastStrip: View {
                     linePath(Array(points[best]), w: w, h: h).stroke(ChartStyle.orange, style: StrokeStyle(lineWidth: 2.6, lineCap: .round, lineJoin: .round))
                 }
                 if hasTide {
-                    tidePath(w: w, top: tideTop, bottom: tideBottom, closed: true)
-                        .fill(LinearGradient(colors: [ChartStyle.cyan.opacity(0.42), ChartStyle.cyan.opacity(0.06)], startPoint: .top, endPoint: .bottom))
-                    tidePath(w: w, top: tideTop, bottom: tideBottom, closed: false)
-                        .stroke(ChartStyle.cyan, style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
-                    tideLabels(w: w, top: tideTop, bottom: tideBottom)
+                    // 潮位は同じ枠に水色の線で重ねる（面は塗らない。釣れ率の面と混ざらないように）
+                    tidePath(w: w, top: 0, bottom: h)
+                        .stroke(ChartStyle.cyan, style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
+                    tideTimes(w: w, top: 0, bottom: h)
                     Circle().fill(ChartStyle.cyan).frame(width: 7, height: 7).overlay(Circle().stroke(ChartStyle.bg, lineWidth: 1.5))
-                        .position(x: x(now, w), y: tideY(tideAt(now), top: tideTop, bottom: tideBottom))
+                        .position(x: x(now, w), y: tideY(tideAt(now), top: 0, bottom: h))
                 }
-                Rectangle().fill(Color.white.opacity(0.10)).frame(width: w, height: 1).offset(y: plot)
-                timeLabels(w: w, plot: plot)
+                Rectangle().fill(Color.white.opacity(0.10)).frame(width: w, height: 1).offset(y: h)
+                timeLabels(w: w, plot: h)
                 Circle().fill(ChartStyle.white).frame(width: 9, height: 9).overlay(Circle().stroke(ChartStyle.bg, lineWidth: 2))
                     .position(x: x(now, w), y: y(scoreAt(now), h))
                 if let scrub {
                     let sx = x(scrub, w)
-                    Rectangle().fill(ChartStyle.orange.opacity(0.7)).frame(width: 1.2, height: plot).position(x: sx, y: plot / 2)
-                    Circle().fill(ChartStyle.orange).frame(width: 14, height: 14).overlay(Circle().stroke(ChartStyle.white, lineWidth: 2.5))
-                        .position(x: sx, y: y(scoreAt(scrub), h))
+                    Rectangle().fill(ChartStyle.orange.opacity(0.7)).frame(width: 1.2, height: h).position(x: sx, y: h / 2)
                     if hasTide {
                         Circle().fill(ChartStyle.cyan).frame(width: 10, height: 10).overlay(Circle().stroke(ChartStyle.white, lineWidth: 2))
-                            .position(x: sx, y: tideY(tideAt(scrub), top: tideTop, bottom: tideBottom))
+                            .position(x: sx, y: tideY(tideAt(scrub), top: 0, bottom: h))
                     }
+                    Circle().fill(ChartStyle.orange).frame(width: 14, height: 14).overlay(Circle().stroke(ChartStyle.white, lineWidth: 2.5))
+                        .position(x: sx, y: y(scoreAt(scrub), h))
                 }
             }
             .frame(width: w, height: geo.size.height, alignment: .topLeading)
@@ -92,12 +87,12 @@ struct ChartForecastStrip: View {
         tide.min { abs($0.at.timeIntervalSince(date)) < abs($1.at.timeIntervalSince(date)) }?.cm ?? tideRange.lowerBound
     }
 
-    /// 潮位 → 縦の位置。段の上は文字のために空け、いちばん下でも 2 pt は面が残る
+    /// 潮位 → 縦の位置。上は時刻の文字のために空け、いちばん低い所でも下の線から 4 pt 上
     private func tideY(_ cm: Double, top: CGFloat, bottom: CGFloat) -> CGFloat {
         let span = max(1, tideRange.upperBound - tideRange.lowerBound)
         let f = CGFloat(max(0, min(1, (cm - tideRange.lowerBound) / span)))
-        let usable = max(4, bottom - top - Self.tideHeadroom - 2)
-        return bottom - 2 - f * usable
+        let usable = max(4, bottom - top - Self.tideHeadroom - 4)
+        return bottom - 4 - f * usable
     }
 
     // MARK: 線
@@ -120,16 +115,11 @@ struct ChartForecastStrip: View {
         return path
     }
 
-    private func tidePath(w: CGFloat, top: CGFloat, bottom: CGFloat, closed: Bool) -> Path {
+    private func tidePath(w: CGFloat, top: CGFloat, bottom: CGFloat) -> Path {
         var path = Path()
-        for (i, s) in tide.enumerated() {
-            let q = CGPoint(x: x(s.at, w), y: tideY(s.cm, top: top, bottom: bottom))
+        for (i, sample) in tide.enumerated() {
+            let q = CGPoint(x: x(sample.at, w), y: tideY(sample.cm, top: top, bottom: bottom))
             if i == 0 { path.move(to: q) } else { path.addLine(to: q) }
-        }
-        if closed, let first = tide.first, let last = tide.last {
-            path.addLine(to: CGPoint(x: x(last.at, w), y: bottom))
-            path.addLine(to: CGPoint(x: x(first.at, w), y: bottom))
-            path.closeSubpath()
         }
         return path
     }
@@ -188,21 +178,19 @@ struct ChartForecastStrip: View {
         .allowsHitTesting(false)
     }
 
-    /// 潮の段：左上に「潮位」、満潮・干潮の所に時刻と高さ
-    private func tideLabels(w: CGFloat, top: CGFloat, bottom: CGFloat) -> some View {
+    /// 満潮・干潮：潮位の線の山と谷に点と時刻だけ（「満潮」「干潮」の文字と高さは出さない。2026-11-11 開発者の指示）
+    private func tideTimes(w: CGFloat, top: CGFloat, bottom: CGFloat) -> some View {
         let shown = extremes.filter { $0.at > now.addingTimeInterval(1500) && $0.at < now.addingTimeInterval(horizon - 600) }
         return ZStack(alignment: .topLeading) {
             Color.clear
-            Text("潮位").font(.system(size: 9, weight: .medium)).foregroundStyle(ChartStyle.gray2).fixedSize()
-                .position(x: 11, y: top + 4)
             ForEach(Array(shown.enumerated()), id: \.offset) { _, extreme in
                 let tx = x(extreme.at, w)
                 let ty = tideY(extreme.levelCm, top: top, bottom: bottom)
-                Circle().fill(ChartStyle.cyan).frame(width: 4.5, height: 4.5).position(x: tx, y: ty)
-                Text((extreme.kind == .high ? "満潮 " : "干潮 ") + JPFormat.hm(extreme.at) + " \(Int(extreme.levelCm.rounded()))cm")
-                    .font(.system(size: 9.5, weight: .semibold)).foregroundStyle(ChartStyle.cyan).fixedSize()
-                    .shadow(color: ChartStyle.bg.opacity(0.9), radius: 2)
-                    .position(x: min(max(tx, 78), w - 48), y: max(top + 4, ty - 9))
+                Circle().fill(ChartStyle.cyan).frame(width: 5, height: 5).position(x: tx, y: ty)
+                Text(JPFormat.hm(extreme.at))
+                    .font(.system(size: 10, weight: .semibold)).monospacedDigit().foregroundStyle(ChartStyle.cyan).fixedSize()
+                    .shadow(color: ChartStyle.bg.opacity(0.95), radius: 2)
+                    .position(x: min(max(tx, 18), w - 18), y: max(top + 5, ty - 9))
             }
         }
         .allowsHitTesting(false)

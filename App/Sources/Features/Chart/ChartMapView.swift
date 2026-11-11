@@ -24,15 +24,19 @@ struct ChartMapView: View {
                     userDot(frame: frame, width: size.width, height: imageHeight, offsetY: offsetY)
                     todayPins(frame: frame, width: size.width, height: imageHeight, offsetY: offsetY)
                 }
-                windDial.position(x: size.width - 44, y: 50)
                 VStack(spacing: 0) {
                     LinearGradient(colors: [ChartStyle.bg, ChartStyle.bg.opacity(0)], startPoint: .top, endPoint: .bottom).frame(height: 44)
                     Spacer(minLength: 0)
                     LinearGradient(colors: [ChartStyle.bg.opacity(0), ChartStyle.bg], startPoint: .top, endPoint: .bottom).frame(height: 120)
                 }
+                .frame(width: size.width, height: size.height)
                 .allowsHitTesting(false)
+                // 風向の計器は上のぼかしより手前に置く（丸が全部見える位置）
+                windDial.position(x: size.width - 44, y: 46)
             }
-            .frame(width: size.width, height: size.height)
+            // 図（縦 3:4）は領域より背が高いことがある。上端をそろえて置き、図は offsetY で中央に寄せる。
+            // 既定の中央ぞろえだと全体が上へずれて、右上の計器が切れていた（2026-11-11 開発者の指摘）
+            .frame(width: size.width, height: size.height, alignment: .topLeading)
             .clipped()
         }
     }
