@@ -52,11 +52,14 @@ public struct ThemeSpec: Codable, Hashable, Sendable {
         public var menu: String?
         /// 開始・撮影ボタンのまわりの光の強さ（0〜1。省略 1）。金や白の強調色は弱めると濁らない
         public var glow: Double?
+        /// 待機中の説明の文字（数字の上の「いまの釣れ率」と、開始ボタンの下の一言）を出すか。省略は出す。
+        /// 絵を見せたいテーマは false（なぞっている時刻はグラフの上に出るので、文字が無くても分かる）
+        public var idleCaptions: Bool?
 
         public init(colors: [String: String]? = nil, font: String? = nil, numberFont: String? = nil, idleNumberSize: Double? = nil, idleFaceGap: Double? = nil,
-                    idleTopScrim: Double? = nil, idleBottomScrim: Double? = nil, idleEffects: [String]? = nil, mapFrame: Bool? = nil, menu: String? = nil, glow: Double? = nil) {
+                    idleTopScrim: Double? = nil, idleBottomScrim: Double? = nil, idleEffects: [String]? = nil, mapFrame: Bool? = nil, menu: String? = nil, glow: Double? = nil, idleCaptions: Bool? = nil) {
             self.colors = colors; self.font = font; self.numberFont = numberFont; self.idleNumberSize = idleNumberSize; self.idleFaceGap = idleFaceGap
-            self.idleTopScrim = idleTopScrim; self.idleBottomScrim = idleBottomScrim; self.idleEffects = idleEffects; self.mapFrame = mapFrame; self.menu = menu; self.glow = glow
+            self.idleTopScrim = idleTopScrim; self.idleBottomScrim = idleBottomScrim; self.idleEffects = idleEffects; self.mapFrame = mapFrame; self.menu = menu; self.glow = glow; self.idleCaptions = idleCaptions
         }
 
         /// 読めた色だけ
@@ -71,6 +74,7 @@ public struct ThemeSpec: Codable, Hashable, Sendable {
         public var resolvedIdleBottomScrim: Double { min(1, max(0, idleBottomScrim ?? 1)) }
         public var usesMenuPanel: Bool { menu == "panel" }
         public var resolvedGlow: Double { min(1, max(0, glow ?? 1)) }
+        public var showsIdleCaptions: Bool { idleCaptions ?? true }
     }
 
     public init(version: Int = 1, label: String, base: String? = nil, fallbackFolder: String? = nil, light: Bool? = nil, fonts: Fonts? = nil,

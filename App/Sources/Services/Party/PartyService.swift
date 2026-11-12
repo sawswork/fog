@@ -64,10 +64,37 @@ final class PartyService {
 
     var isAvailable: Bool { container != nil && Self.isEnabled }
 
-    /// 仲間の投稿（自分の端末からの投稿を除く）。新しい順
+    /// 仲間の投稿（自分の端末からの投稿を除く）。新しい順。サイズが無いものは、この端末で入れた値があればそれを入れて返す
     var others: [SharedCatch] {
         let me = AnglerSettings.deviceID
-        return items.filter { $0.device != me }.sorted { $0.at > $1.at }
+        return items.filter { $0.device != me }.map { withLocalLength($0) }.sorted { $0.at > $1.at }
+    }
+
+    // MARK: 仲間の釣果のサイズ（この端末だけの手入力）
+
+    /// 仲間の釣果に、この端末で入れたサイズ（cm）。相手の記録は相手しか直せないので、こちらの表示にだけ使う。
+    /// 相手があとでサイズを入れたら、相手の値を使う
+    private(set) var localLengths: [String: Double] = (UserDefaults.standard.dictionary(forKey: "fog.party.localLengths") as? [String: Double]) ?? [:]
+
+    func setLocalLength(id: UUID, cm: Double?) {
+        if let cm, cm > 0 { localLengths[id.uuidString] = cm } else { localLengths[id.uuidString] = nil }
+        UserDefaults.standard.set(localLengths, forKey: "fog.party.localLengths")
+        revision += 1
+    }
+
+    func withLocalLength(_ item: SharedCatch) -> SharedCatch {
+        guard item.lengthCm == nil, let cm = localLengths[item.id.uuidString] else { return item }
+        var copy = item
+        copy.lengthCm = cm
+        return copy
+    }
+
+    /// 相手の記録にサイズが無いか（この端末で入れた値は数えない）
+    func isUnmeasured(_ item: SharedCatch) -> Bool { (items.first { $0.id == item.id } ?? item).lengthCm == nil || isLocalLength(item) }
+
+    /// そのサイズは、この端末で入れたものか
+    func isLocalLength(_ item: SharedCatch) -> Bool {
+        localLengths[item.id.uuidString] != nil && (items.first { $0.id == item.id }?.lengthCm == nil)
     }
 
     /// 仲間の端末の釣行（F-62）。新しい順
@@ -109,6 +136,13 @@ final class PartyService {
     }
 
     // MARK: 同期
+
+    /// 画面を開いたとき用：前の同期から `maxAge` 秒たっていれば、30 分の間隔を待たずに取り直す。
+    /// 仲間がサイズや釣った人を直したあと、こちらの画面が古いままにならないように（2026-11-12 開発者の指摘）
+    func syncIfStale(store: FogStore, maxAge: TimeInterval = 60, now: Date = .now) async {
+        if let last = lastSyncAt, now.timeIntervalSince(last) < maxAge { return }
+        await syncIfNeeded(store: store, now: now, force: true)
+    }
 
     /// 未送信の釣果を送り、全員の釣果を取る。30 分に 1 回（`force` で無視）
     func syncIfNeeded(store: FogStore, now: Date = .now, force: Bool = false) async {

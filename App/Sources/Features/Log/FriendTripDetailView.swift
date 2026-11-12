@@ -5,6 +5,8 @@ import Core
 struct SharedCatchRow: View {
     let item: SharedCatch
     let thumbnail: Data?
+    /// サイズが、この端末で入れた値か（相手の記録ではない）
+    var localLength = false
 
     var body: some View {
         HStack(spacing: DS.Spacing.m) {
@@ -30,6 +32,7 @@ struct SharedCatchRow: View {
                 HStack(spacing: DS.Spacing.s) {
                     Text(item.lengthCm.map { "\(Int($0.rounded()))cm" } ?? "未計測").font(DS.Font.number(16))
                         .foregroundStyle(item.lengthCm == nil ? DS.Color.textTertiary : DS.Color.accent)
+                    if localLength { Text("手入力").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary) }
                     if let t = item.tideName { Text(t).font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary) }
                 }
             }
@@ -38,11 +41,82 @@ struct SharedCatchRow: View {
     }
 }
 
+/// 仲間の釣果の 1 行に、写真を開くタップと、サイズを入れる鉛筆（相手が未計測のときだけ）を付けたもの
+struct SharedCatchLine: View {
+    let item: SharedCatch
+    let onPhoto: () -> Void
+    let onEdit: () -> Void
+    @Environment(AppServices.self) private var services
+
+    var body: some View {
+        let party = services.party
+        HStack(spacing: 0) {
+            Button(action: onPhoto) {
+                SharedCatchRow(item: party.withLocalLength(item), thumbnail: party.thumbnail(for: item.id), localLength: party.isLocalLength(item))
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            if party.isUnmeasured(item) {
+                Button(action: onEdit) {
+                    Image(systemName: "pencil").font(.system(size: 14, weight: .semibold)).foregroundStyle(DS.Color.textTertiary)
+                        .frame(width: 40, height: 44).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("サイズを入れる")
+            }
+        }
+    }
+}
+
+/// 自分の釣行 1 つについて、同行者と、その人の端末の釣果を、最新の共有データから決める（F-62）
+@MainActor
+enum PartyCompanions {
+    static func resolve(sessionID: UUID, services: AppServices) -> (companions: [String], catches: [SharedCatch]) {
+        guard PartyService.isEnabled else { return ([], []) }
+        let store = services.store
+        let sessions = (try? store.sessions()) ?? []
+        let spots = Dictionary(((try? store.spots()) ?? []).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let ownName = AnglerSettings.ownName, me = AnglerSettings.deviceID
+        let ownLegs = sessions.map { PartyTrip.Leg(SharedSession.make(from: $0, spot: spots[$0.spotID], ownName: ownName, device: me)) }
+        let resolved = PartyTrips.resolve(own: ownLegs, others: services.party.otherSessions.map { PartyTrip.Leg($0) }, ownName: ownName)
+        return (resolved.companions[sessionID] ?? [], PartyTrips.catches(in: resolved.companionLegs[sessionID] ?? [], from: services.party.others))
+    }
+}
+
+/// 仲間の釣果のサイズを、この端末で入れる（相手が未計測のままのとき）。相手の記録は変えない
+struct SharedLengthEditor: ViewModifier {
+    @Binding var item: SharedCatch?
+    @Environment(AppServices.self) private var services
+    @State private var text = ""
+
+    func body(content: Content) -> some View {
+        content
+            .alert("サイズを入れる", isPresented: Binding(get: { item != nil }, set: { if !$0 { item = nil } })) {
+                TextField("全長 cm", text: $text).keyboardType(.decimalPad)
+                Button("保存") {
+                    if let item { services.party.setLocalLength(id: item.id, cm: RigParts.parseGrams(text)) }
+                    item = nil
+                }
+                Button("キャンセル", role: .cancel) { item = nil }
+            } message: {
+                Text("仲間の記録は仲間の端末でしか直せません。ここで入れたサイズは、この端末の表示とまとめにだけ使います（空で保存すると消えます）")
+            }
+            .onChange(of: item?.id) { _, _ in
+                text = item.flatMap { services.party.localLengths[$0.id.uuidString] }.map { RigParts.gramsText($0) } ?? ""
+            }
+    }
+}
+
+extension View {
+    func sharedLengthEditor(item: Binding<SharedCatch?>) -> some View { modifier(SharedLengthEditor(item: item)) }
+}
+
 /// 仲間の釣行の詳細（F-62）。自分は行っていない釣行：いつ・どこで・誰が・何を釣ったか。写真はタップで全画面（本体は iCloud から）
 struct FriendTripDetailView: View {
     let card: LogViewModel.FriendTripCard
     @Environment(AppServices.self) private var services
     @State private var viewing: SharedCatch?
+    @State private var sizing: SharedCatch?
 
     private var trip: PartyTrip { card.trip }
 
@@ -51,13 +125,12 @@ struct FriendTripDetailView: View {
             VStack(alignment: .leading, spacing: DS.Spacing.m) {
                 header
                 VStack(alignment: .leading, spacing: DS.Spacing.s) {
-                    Text(card.catches.isEmpty ? "釣果" : "釣果 \(card.catches.count)尾 · タップで写真").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+                    Text(card.catches.isEmpty ? "釣果" : "釣果 \(card.catches.count)尾 · タップで写真、未計測は鉛筆でサイズを入れる").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
                     if card.catches.isEmpty {
                         Text(trip.isActive ? "まだ釣果はありません" : "ボウズ").font(DS.Font.label).foregroundStyle(DS.Color.textSecondary)
                     }
                     ForEach(card.catches) { c in
-                        Button { viewing = c } label: { SharedCatchRow(item: c, thumbnail: services.party.thumbnail(for: c.id)) }
-                            .buttonStyle(.plain)
+                        SharedCatchLine(item: c, onPhoto: { viewing = c }, onEdit: { sizing = c })
                     }
                 }
                 .padding(DS.Spacing.m)
@@ -67,6 +140,8 @@ struct FriendTripDetailView: View {
             .padding(DS.Spacing.l)
         }
         .background(ThemeBackground(name: .bgDetail))
+        .sharedLengthEditor(item: $sizing)
+        .task { await services.party.syncIfStale(store: services.store) }
         .fullScreenCover(item: $viewing) { s in
             PhotoViewer(catchItem: Catch(id: s.id, sessionID: s.id, at: s.at, coordinate: s.coordinate, species: s.species, speciesConfidence: 1, lengthCm: s.lengthCm, angler: s.angler),
                         fallback: services.party.thumbnail(for: s.id), sharedID: s.id)

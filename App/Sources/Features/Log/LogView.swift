@@ -40,7 +40,8 @@ struct LogView: View {
         .onAppear { model.attach(services) }
         .onReceive(NotificationCenter.default.publisher(for: .fogStoreDidChange)) { _ in model.refresh() }
         // 仲間の釣行（F-62）：開いたら取りに行き、届いたら並べ直す
-        .task { await services.party.syncIfNeeded(store: services.store) }
+        // 記録を開いたら、前の同期から 1 分たっていれば仲間の釣果を取り直す（30 分の間隔を待たない）
+        .task { await services.party.syncIfStale(store: services.store) }
         .onChange(of: services.party.revision) { _, _ in model.refresh() }
         .sheet(item: $detail) {
             SessionDetailView(session: $0, spotName: model.spots[$0.spotID]?.name ?? "釣り場",
@@ -81,7 +82,7 @@ struct LogView: View {
     /// 見出し「ログ」と右の数字 2 つ（確定画像：数字の下に小さなラベル）
     private var header: some View {
         HStack(alignment: .bottom) {
-            Text("ログ").font(.system(size: 34, weight: .bold)).foregroundStyle(DS.Color.textPrimary)
+            Text("記録").font(.system(size: 34, weight: .bold)).foregroundStyle(DS.Color.textPrimary)
             // 写真を選んで取り込む（F-61）。標準カメラで撮った過去の写真も釣果にできる。メジャーが写っていればサイズも入る
             PhotosPicker(selection: $pickedPhotos, maxSelectionCount: 20, matching: .images, photoLibrary: .shared()) {
                 Group {

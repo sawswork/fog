@@ -57,6 +57,16 @@ struct ChartForecastStrip: View {
                     }
                     Circle().fill(ChartStyle.orange).frame(width: 14, height: 14).overlay(Circle().stroke(ChartStyle.white, lineWidth: 2.5))
                         .position(x: sx, y: y(scoreAt(scrub), h))
+                    // なぞっている時刻と、その時刻の釣れ率（線のいちばん上。端では枠の内側へ寄せる）
+                    HStack(spacing: 5) {
+                        Text(JPFormat.hm(scrub)).font(ChartStyle.font(11, .bold)).monospacedDigit()
+                        Text("\(scoreAt(scrub))").font(ChartStyle.number(12, .bold)).monospacedDigit()
+                    }
+                    .foregroundStyle(ChartStyle.onAccent)
+                    .padding(.horizontal, 8).frame(height: 20)
+                    .background(ChartStyle.orange, in: Capsule())
+                    .fixedSize()
+                    .position(x: min(max(sx, 36), w - 36), y: 10)
                 }
             }
             .frame(width: w, height: geo.size.height, alignment: .topLeading)

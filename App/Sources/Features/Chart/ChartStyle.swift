@@ -31,6 +31,8 @@ struct ChartSkinValues {
     var mapFrame = false
     /// ボタンのまわりの光の強さ（0〜1）
     var glow: Double = 1
+    /// 待機中の説明の文字（「いまの釣れ率」と開始ボタンの下の一言）を出すか
+    var idleCaptions = true
     var menuPanel = false
     /// 素材を探すテーマのフォルダ（無ければ標準の `ChartUI/`）
     var folder: URL?
@@ -63,6 +65,7 @@ struct ChartSkinValues {
         mapFrame = skin.mapFrame == true
         menuPanel = skin.usesMenuPanel
         glow = skin.resolvedGlow
+        idleCaptions = skin.showsIdleCaptions
     }
 
     private init() {}
