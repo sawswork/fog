@@ -6,7 +6,39 @@ extension GuideEntry: Identifiable {
     public var id: String { species }
 }
 
-/// 図鑑（§6）。釣った魚種だけがベストショットのグリッドで並ぶ。この画面だけ縦スクロールを許容する。
+/// 図鑑に並べる、自分以外の人の釣果（F-66）。この端末で撮った仲間の魚と、仲間の端末から届いた魚
+@MainActor
+enum GuideFriends {
+    static func all(services: AppServices) -> [GuideFriendCatch] {
+        let own = AnglerSettings.ownName
+        var out: [GuideFriendCatch] = []
+        for c in ((try? services.store.sessions()) ?? []).flatMap(\.catches) where !c.isOwn(ownName: own) {
+            out.append(GuideFriendCatch(id: c.id, species: c.species, angler: AnglerSettings.displayName(for: c.angler), lengthCm: c.lengthCm, at: c.at, isLocal: true))
+        }
+        for s in services.party.others {
+            out.append(GuideFriendCatch(id: s.id, species: s.species, angler: PartyTrips.displayName(owner: s.angler), lengthCm: s.lengthCm, at: s.at, isLocal: false))
+        }
+        return out
+    }
+
+    /// 自分の図鑑に仲間の魚を足したもの
+    static func entries(services: AppServices) -> [GuideEntry] {
+        let sessions = (try? services.store.ownSessions()) ?? []
+        return Guide.merged(own: Guide.entries(sessions: sessions), friends: all(services: services), ownName: AnglerSettings.ownName)
+    }
+
+    /// タイルと詳細の上の写真。自分のベストショット、自分が釣っていない魚種は仲間の写真（大きい順に、写真のあるもの）
+    static func thumbnail(for e: GuideEntry, services: AppServices) -> Data? {
+        if !e.isFriendOnly { return services.store.thumbnail(catchID: e.bestCatchID) }
+        let ordered = (e.friendBest.map { [$0] } ?? []) + e.friendCatches
+        for c in ordered {
+            if let data = c.isLocal ? services.store.thumbnail(catchID: c.id) : services.party.thumbnail(for: c.id) { return data }
+        }
+        return nil
+    }
+}
+
+/// 図鑑（§6）。釣った魚種がベストショットのグリッドで並ぶ（仲間が釣った魚も。F-66）。この画面だけ縦スクロールを許容する。
 struct GuideView: View {
     @Environment(AppServices.self) private var services
     @State private var entries: [GuideEntry] = []
@@ -16,8 +48,6 @@ struct GuideView: View {
     @Environment(\.captureTab) private var captureTab
     /// 釣った魚 / 全国の魚（F-60）
     @State private var mode: Mode = .caught
-    /// ほかの人の魚として記録されている釣果（「ねも 4 尾」）。あれば、図鑑に入っていない理由を 1 行で出す
-    @State private var othersNote: String?
     @State private var catalog = FishCatalog(entries: [])
     @State private var query = ""
     enum Mode: String, CaseIterable { case caught = "釣った魚", all = "全国の魚" }
@@ -27,17 +57,13 @@ struct GuideView: View {
     /// 釣果の魚種名 → 図鑑の id（別名も引く）
     private var caughtByID: [String: Int] {
         var out: [String: Int] = [:]
-        for e in entries { if let f = catalog.entry(forSpecies: e.species) { out[f.id, default: 0] += e.count } }
+        for e in entries where !e.isFriendOnly { if let f = catalog.entry(forSpecies: e.species) { out[f.id, default: 0] += e.count } }
         return out
     }
 
     var body: some View {
         VStack(spacing: DS.Spacing.s) {
             header
-            if mode == .caught, let othersNote {
-                Text("ほかの人の魚（\(othersNote)）は図鑑に入れていません。自分の魚なら、記録の釣行で釣果の行をタップして「釣った人」を自分に直すと入ります")
-                    .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary).frame(maxWidth: .infinity, alignment: .leading)
-            }
             if mode == .all {
                 FishDatabaseSection(catalog: catalog, caughtIDs: Set(caughtByID.keys), caughtCount: caughtByID, query: $query)
             } else if !query.isEmpty {
@@ -52,7 +78,7 @@ struct GuideView: View {
                     ScrollView(.vertical, showsIndicators: false) {
                         LazyVGrid(columns: columns, alignment: .leading, spacing: DS.Spacing.m) {
                             ForEach(Guide.sorted(hits, by: sort), id: \.species) { e in
-                                GuideTile(entry: e, thumbnail: services.store.thumbnail(catchID: e.bestCatchID)).onTapGesture { selected = e }
+                                GuideTile(entry: e, thumbnail: GuideFriends.thumbnail(for: e, services: services)).onTapGesture { selected = e }
                             }
                         }
                         .padding(.bottom, DS.Spacing.l)
@@ -69,7 +95,7 @@ struct GuideView: View {
                 ScrollView(.vertical, showsIndicators: false) {
                     LazyVGrid(columns: columns, alignment: .leading, spacing: DS.Spacing.m) {
                         ForEach(Guide.sorted(entries, by: sort), id: \.species) { e in
-                            GuideTile(entry: e, thumbnail: services.store.thumbnail(catchID: e.bestCatchID))
+                            GuideTile(entry: e, thumbnail: GuideFriends.thumbnail(for: e, services: services))
                                 .onTapGesture { selected = e }
                         }
                     }
@@ -92,7 +118,13 @@ struct GuideView: View {
             let c = await Task.detached(priority: .userInitiated) { FishCatalog.bundled() }.value
             catalog = c
         }
+        .task {
+            // 仲間の釣果を取り直してから並べ直す（F-66）
+            await services.party.syncIfStale(store: services.store)
+            reload()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .fogStoreDidChange)) { _ in reload() }
+        .onChange(of: services.party.revision) { _, _ in reload() }
         .sheet(item: $selected) { SpeciesDetailView(entry: $0).onDisappear(perform: reload) }
     }
 
@@ -100,9 +132,15 @@ struct GuideView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: DS.Spacing.s) {
             HStack(spacing: DS.Spacing.s) {
-                countChip(system: "fish.fill", value: entries.count, unit: "種")
+                // 種と尾は自分の記録。仲間だけが釣った魚種は別に数える（F-66）
+                let friendOnly = entries.filter(\.isFriendOnly).count
+                countChip(system: "fish.fill", value: entries.count - friendOnly, unit: "種")
                 countChip(system: "heart.fill", value: entries.reduce(0) { $0 + $1.count }, unit: "尾")
-                if !catalog.entries.isEmpty { countChip(system: "books.vertical.fill", value: catalog.entries.count, unit: "種を収録") }
+                if mode == .caught, friendOnly > 0 {
+                    countChip(system: "person.2.fill", value: friendOnly, unit: "種は仲間だけ")
+                } else if !catalog.entries.isEmpty {
+                    countChip(system: "books.vertical.fill", value: catalog.entries.count, unit: "種を収録")
+                }
                 Spacer()
                 if mode == .caught {
                     Menu {
@@ -148,14 +186,10 @@ struct GuideView: View {
     }
 
     private func reload() {
-        // 図鑑は自分が釣った魚だけ（他の人の魚を自分の端末で撮った分は入れない。F-54）
+        // 自分の魚に、仲間が釣った魚を足して並べる（F-66）。尾数・最大・自己記録・分析は自分の魚だけのまま（F-54）
         let sessions = (try? services.store.ownSessions()) ?? []
-        entries = Perf.measure("図鑑の集計") { Guide.entries(sessions: sessions) }
-        // ほかの人の魚として記録されている分（図鑑に出ない理由が分かるように数を出す）
-        let own = AnglerSettings.ownName
-        var counts: [String: Int] = [:]
-        for c in ((try? services.store.sessions()) ?? []).flatMap(\.catches) where !c.isOwn(ownName: own) { counts[c.angler ?? "ほかの人", default: 0] += 1 }
-        othersNote = counts.isEmpty ? nil : counts.sorted { $0.value > $1.value }.map { "\($0.key) \($0.value) 尾" }.joined(separator: "、")
+        let friends = GuideFriends.all(services: services), ownName = AnglerSettings.ownName
+        entries = Perf.measure("図鑑の集計") { Guide.merged(own: Guide.entries(sessions: sessions), friends: friends, ownName: ownName) }
     }
 }
 
@@ -164,6 +198,7 @@ struct CaptureTabKey: EnvironmentKey { static let defaultValue: (() -> Void)? = 
 extension EnvironmentValues { var captureTab: (() -> Void)? { get { self[CaptureTabKey.self] } set { self[CaptureTabKey.self] = newValue } } }
 
 /// タイル：写真（正方形）、魚種名、最大全長。直近 1 週間の記録更新は写真の角にオレンジの点（確定画像のカード型）。
+/// 仲間も釣った魚種は、写真の左下に釣った人の名前の札（F-66）。
 struct GuideTile: View {
     let entry: GuideEntry
     let thumbnail: Data?
@@ -185,13 +220,21 @@ struct GuideTile: View {
                             }
                         }
                     }
+                    .overlay(alignment: .bottomLeading) {
+                        // 誰が釣ったか（自分だけの魚種には出さない）
+                        if entry.isFriendOnly || !entry.friends.isEmpty {
+                            Text(entry.anglers.map(\.name).joined(separator: "・"))
+                                .font(.system(size: 10, weight: .semibold)).foregroundStyle(DS.Color.background).lineLimit(1)
+                                .padding(.horizontal, 6).padding(.vertical, 2).background(DS.Color.sun, in: Capsule()).padding(5)
+                        }
+                    }
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 if entry.recentlyUpdated {
                     Circle().fill(DS.Color.accent).frame(width: 10, height: 10).padding(8)
                 }
             }
             Text(entry.species).font(.system(size: 14, weight: .medium)).foregroundStyle(DS.Color.textPrimary).lineLimit(2).fixedSize(horizontal: false, vertical: true)
-            Text(entry.maxLengthCm.map { "\(Int($0.rounded())) cm" } ?? "—").font(DS.Font.number(12)).foregroundStyle(DS.Color.textTertiary)
+            Text(entry.shownMaxLengthCm.map { "\(Int($0.rounded())) cm" } ?? "—").font(DS.Font.number(12)).foregroundStyle(DS.Color.textTertiary)
         }
         .padding(6)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -199,88 +242,137 @@ struct GuideTile: View {
     }
 }
 
+/// 魚種詳細の写真 1 枚。自分の魚、この端末で撮った仲間の魚、仲間の端末から届いた魚のどれか（F-66）
+struct GuideShot: Identifiable {
+    let id: UUID
+    let at: Date
+    let lengthCm: Double?
+    /// 釣った人（自分の魚は nil）
+    let angler: String?
+    /// この端末の釣果（写真の拡大と修正ができる）
+    let local: Catch?
+    /// 仲間の端末の釣果
+    let shared: SharedCatch?
+}
+
 /// 魚種詳細：上半分にベストショット、下半分に数字と条件。写真長押しで魚種・サイズの修正（F-24）。
+/// 仲間も釣った魚種は、写真の上に釣った人ごとの尾数と最大を並べ、写真の列に仲間の魚も入れる（F-66）。
 struct SpeciesDetailView: View {
+    /// 開いたときの内容。開いたあとは `shown`（修正のたびに作り直したもの）を使う
     let entry: GuideEntry
     @Environment(AppServices.self) private var services
+    @State private var current: GuideEntry?
     @State private var catches: [Catch] = []
+    @State private var shots: [GuideShot] = []
     @State private var spots: [UUID: Spot] = [:]
     @State private var editing: Catch?
+    /// 仲間の端末の釣果にサイズを入れる（相手が未計測のときだけ）
+    @State private var sizing: SharedCatch?
     /// 写真をタップで全画面（ピンチで拡大。F-55）
-    @State private var viewing: Catch?
+    @State private var viewing: GuideShot?
+
+    private var shown: GuideEntry { current ?? entry }
+    /// 釣った人の札を出すか（自分だけの魚種には出さない）
+    private var showsAnglers: Bool { shown.isFriendOnly || !shown.friends.isEmpty }
 
     var body: some View {
         GeometryReader { geo in
             VStack(spacing: DS.Spacing.s) {
                 // ベストショット（タップで全画面）。左下に魚種名と最大サイズ
                 ZStack(alignment: .bottomLeading) {
-                    if let data = services.store.thumbnail(catchID: entry.bestCatchID), let ui = UIImage(data: data) {
+                    if let data = GuideFriends.thumbnail(for: shown, services: services), let ui = UIImage(data: data) {
                         Image(uiImage: ui).resizable().scaledToFill()
                     } else { DS.Color.surface }
-                    LinearGradient(colors: [.clear, DS.Color.background.opacity(0.9)], startPoint: .center, endPoint: .bottom)
-                    HStack(alignment: .firstTextBaseline, spacing: DS.Spacing.s) {
-                        Text(entry.species).font(DS.Font.number(28)).foregroundStyle(DS.Color.textPrimary)
-                        if let l = entry.maxLengthCm {
-                            Text("最大 \(Int(l.rounded()))cm").font(DS.Font.number(16)).foregroundStyle(DS.Color.accent)
-                            if Species.lookup(entry.species)?.isSquid == true { Text("胴長").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary) }
+                    LinearGradient(colors: [.clear, DS.Color.background.opacity(0.9)], startPoint: showsAnglers ? .top : .center, endPoint: .bottom)
+                    VStack(alignment: .leading, spacing: DS.Spacing.s) {
+                        // 誰が釣ったか：釣った人ごとの尾数と最大（自分が先頭）
+                        if showsAnglers { anglerRow }
+                        HStack(alignment: .firstTextBaseline, spacing: DS.Spacing.s) {
+                            Text(shown.species).font(DS.Font.number(28)).foregroundStyle(DS.Color.textPrimary)
+                            if let l = shown.shownMaxLengthCm {
+                                Text("最大 \(Int(l.rounded()))cm").font(DS.Font.number(16)).foregroundStyle(DS.Color.accent)
+                                if Species.lookup(shown.species)?.isSquid == true { Text("胴長").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary) }
+                            }
+                            Spacer()
+                            Image(systemName: "arrow.up.left.and.arrow.down.right").font(.system(size: 12, weight: .bold)).foregroundStyle(DS.Color.textSecondary)
                         }
-                        Spacer()
-                        Image(systemName: "arrow.up.left.and.arrow.down.right").font(.system(size: 12, weight: .bold)).foregroundStyle(DS.Color.textSecondary)
                     }
                     .padding(DS.Spacing.l)
                 }
                 .frame(height: geo.size.height * 0.30).clipped()
                 .contentShape(Rectangle())
-                .onTapGesture { if let best = catches.first(where: { $0.id == entry.bestCatchID }) { viewing = best } }
+                .onTapGesture {
+                    let bestID: UUID? = shown.isFriendOnly ? shown.friendBest?.id : shown.bestCatchID
+                    if let best = shots.first(where: { $0.id == bestID }) ?? shots.first { viewing = best }
+                }
 
                 VStack(spacing: DS.Spacing.s) {
-                    // 数字 4 つ（ラベルを上に）
+                    // 数字 4 つ（ラベルを上に）。自分の記録。自分が釣っていない魚種は仲間の記録
                     HStack(spacing: DS.Spacing.s) {
-                        stat("尾数", "\(entry.count)", unit: "尾")
-                        stat("最大", entry.maxLengthCm.map { "\(Int($0.rounded()))" } ?? "—", unit: "cm")
-                        stat("初めて", JPFormat.md(entry.firstCaughtAt))
-                        stat("最後", JPFormat.md(entry.lastCaughtAt))
+                        let mine = showsAnglers && !shown.isFriendOnly
+                        stat(mine ? "自分の尾数" : "尾数", "\(shown.isFriendOnly ? shown.friendCatches.count : shown.count)", unit: "尾")
+                        stat(mine ? "自分の最大" : "最大", shown.shownMaxLengthCm.map { "\(Int($0.rounded()))" } ?? "—", unit: "cm")
+                        stat("初めて", JPFormat.md(shown.firstCaughtAt))
+                        stat("最後", JPFormat.md(shown.lastCaughtAt))
                     }
-                    section("サイズの推移（白い点は自己記録）") { sizeTrend }
-                    section("釣れやすい条件") {
-                        HStack(alignment: .top, spacing: DS.Spacing.m) {
-                            distribution("時間帯", entry.conditions.byLight)
-                            distribution("潮", entry.conditions.byTide)
-                            distribution("水温", Dictionary(uniqueKeysWithValues: entry.conditions.bySeaTemp.map { ("\($0.key)℃", $0.value) }))
-                            distribution("月", Dictionary(uniqueKeysWithValues: entry.conditions.byMonth.map { ("\($0.key)月", $0.value) }))
+                    if shown.isFriendOnly {
+                        section("自分の記録") {
+                            Text("まだ自分では釣っていません。釣ると、サイズの推移と釣れやすい条件がここに出ます")
+                                .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary).frame(maxWidth: .infinity, alignment: .leading)
                         }
-                    }
-                    section("釣れた場所") {
-                        HStack(spacing: DS.Spacing.l) {
-                            ForEach(entry.topSpots, id: \.spotID) { s in
-                                HStack(spacing: DS.Spacing.xs) {
-                                    Text(spots[s.spotID]?.name ?? "釣り場").font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
-                                    Text("\(s.count)尾").font(DS.Font.number(13)).foregroundStyle(DS.Color.textSecondary)
-                                }
+                    } else {
+                        section("サイズの推移（白い点は自己記録）") { sizeTrend }
+                        section("釣れやすい条件") {
+                            HStack(alignment: .top, spacing: DS.Spacing.m) {
+                                distribution("時間帯", shown.conditions.byLight)
+                                distribution("潮", shown.conditions.byTide)
+                                distribution("水温", Dictionary(uniqueKeysWithValues: shown.conditions.bySeaTemp.map { ("\($0.key)℃", $0.value) }))
+                                distribution("月", Dictionary(uniqueKeysWithValues: shown.conditions.byMonth.map { ("\($0.key)月", $0.value) }))
                             }
-                            Spacer()
+                        }
+                        section("釣れた場所") {
+                            HStack(spacing: DS.Spacing.l) {
+                                ForEach(shown.topSpots, id: \.spotID) { s in
+                                    HStack(spacing: DS.Spacing.xs) {
+                                        Text(spots[s.spotID]?.name ?? "釣り場").font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
+                                        Text("\(s.count)尾").font(DS.Font.number(13)).foregroundStyle(DS.Color.textSecondary)
+                                    }
+                                }
+                                Spacer()
+                            }
                         }
                     }
-                    section("写真 · タップで拡大、長押しで修正（魚種・サイズ・リグ・釣った人）") {
+                    section(showsAnglers ? "写真 · 名前の札は仲間の魚。タップで拡大、長押しで修正" : "写真 · タップで拡大、長押しで修正（魚種・サイズ・リグ・釣った人）") {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: DS.Spacing.s) {
-                                ForEach(catches, id: \.id) { c in
+                                ForEach(shots) { shot in
                                     VStack(spacing: 3) {
                                         ZStack(alignment: .bottomLeading) {
-                                            if let data = services.store.thumbnail(catchID: c.id), let ui = UIImage(data: data) {
+                                            if let data = thumbnail(for: shot), let ui = UIImage(data: data) {
                                                 Image(uiImage: ui).resizable().scaledToFill()
                                             } else { DS.Color.surface }
-                                            Text(c.lengthCm.map { "\(Int($0.rounded()))cm" } ?? "未計測").font(DS.Font.number(11)).foregroundStyle(.white)
+                                            Text(shot.lengthCm.map { "\(Int($0.rounded()))cm" } ?? "未計測").font(DS.Font.number(11)).foregroundStyle(.white)
                                                 .padding(.horizontal, 5).padding(.vertical, 2).background(Color.black.opacity(0.55), in: Capsule()).padding(4)
                                         }
                                         .frame(width: 72, height: 72)
+                                        .overlay(alignment: .topLeading) {
+                                            // 仲間の魚には釣った人の名前
+                                            if let name = shot.angler {
+                                                Text(name).font(.system(size: 9, weight: .semibold)).foregroundStyle(DS.Color.background).lineLimit(1)
+                                                    .padding(.horizontal, 5).padding(.vertical, 2).background(DS.Color.sun, in: Capsule())
+                                                    .frame(maxWidth: 64, alignment: .leading).padding(4)
+                                            }
+                                        }
                                         .clipShape(RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
-                                        Text(JPFormat.mdhm(c.at)).font(.system(size: 9)).foregroundStyle(DS.Color.textTertiary)
+                                        Text(JPFormat.mdhm(shot.at)).font(.system(size: 9)).foregroundStyle(DS.Color.textTertiary)
                                     }
                                     .contentShape(Rectangle())
-                                    // タップで拡大（F-55）、長押しで修正（F-24）
-                                    .onTapGesture { viewing = c }
-                                    .onLongPressGesture { editing = c }
+                                    // タップで拡大（F-55）、長押しで修正（F-24）。仲間の端末の魚は、未計測のときだけこの端末でサイズを入れられる
+                                    .onTapGesture { viewing = shot }
+                                    .onLongPressGesture {
+                                        if let c = shot.local { editing = c }
+                                        else if let s = shot.shared, services.party.isUnmeasured(s) { sizing = s }
+                                    }
                                 }
                             }
                         }
@@ -295,7 +387,38 @@ struct SpeciesDetailView: View {
         .onAppear { Perf.mark("魚種詳細を開いた"); reload() }
         .onDisappear { Perf.mark("魚種詳細を閉じた") }
         .sheet(item: $editing) { c in CatchEditSheet(catchItem: c) { reload() }.presentationDetents([.large]) }
-        .fullScreenCover(item: $viewing) { c in PhotoViewer(catchItem: c) }
+        .sharedLengthEditor(item: $sizing)
+        .onChange(of: services.party.revision) { _, _ in reload() }
+        .fullScreenCover(item: $viewing) { shot in
+            if let c = shot.local {
+                PhotoViewer(catchItem: c)
+            } else if let s = shot.shared {
+                PhotoViewer(catchItem: Catch(id: s.id, sessionID: s.id, at: s.at, coordinate: s.coordinate, species: s.species, speciesConfidence: 1, lengthCm: s.lengthCm, angler: s.angler),
+                            fallback: services.party.thumbnail(for: s.id), sharedID: s.id)
+            }
+        }
+    }
+
+    /// 釣った人ごとの札（自分が先頭）。「ねも 2尾 45cm」
+    private var anglerRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: DS.Spacing.xs) {
+                ForEach(shown.anglers) { a in
+                    HStack(alignment: .firstTextBaseline, spacing: 5) {
+                        Text(a.name).font(.system(size: 12, weight: .semibold)).foregroundStyle(a.isOwn ? DS.Color.accent : DS.Color.sun).lineLimit(1)
+                        Text("\(a.count)尾").font(DS.Font.number(12)).foregroundStyle(.white)
+                        if let l = a.maxLengthCm { Text("\(Int(l.rounded()))cm").font(DS.Font.number(12)).foregroundStyle(.white.opacity(0.75)) }
+                    }
+                    .padding(.horizontal, 9).padding(.vertical, 4)
+                    .background(Color.black.opacity(0.55), in: Capsule())
+                    .accessibilityElement(children: .combine)
+                }
+            }
+        }
+    }
+
+    private func thumbnail(for shot: GuideShot) -> Data? {
+        shot.local != nil ? services.store.thumbnail(catchID: shot.id) : services.party.thumbnail(for: shot.id)
     }
 
     /// 見出し付きの区画（枠線なし、面で区切る）
@@ -349,8 +472,20 @@ struct SpeciesDetailView: View {
     }
 
     private func reload() {
-        let sessions = (try? services.store.ownSessions()) ?? []
-        catches = sessions.flatMap(\.catches).filter { $0.species == entry.species }.sorted { $0.at > $1.at }
+        // 修正（釣った人・魚種・サイズ）のあとも数字と札が合うように、この魚種の項目を作り直す
+        if let fresh = GuideFriends.entries(services: services).first(where: { $0.species == entry.species }) { current = fresh }
+        let ownName = AnglerSettings.ownName
+        let all = ((try? services.store.sessions()) ?? []).flatMap(\.catches).filter { $0.species == entry.species }
+        // サイズの推移と自己記録は自分の魚だけ（F-54）
+        catches = all.filter { $0.isOwn(ownName: ownName) }.sorted { $0.at > $1.at }
+        var list = all.map { c in
+            GuideShot(id: c.id, at: c.at, lengthCm: c.lengthCm, angler: c.isOwn(ownName: ownName) ? nil : AnglerSettings.displayName(for: c.angler), local: c, shared: nil)
+        }
+        let localIDs = Set(list.map(\.id))
+        for s in services.party.others where s.species == entry.species && !localIDs.contains(s.id) {
+            list.append(GuideShot(id: s.id, at: s.at, lengthCm: s.lengthCm, angler: PartyTrips.displayName(owner: s.angler), local: nil, shared: s))
+        }
+        shots = list.sorted { $0.at > $1.at }
         spots = Dictionary(uniqueKeysWithValues: ((try? services.store.spots()) ?? []).map { ($0.id, $0) })
     }
 
