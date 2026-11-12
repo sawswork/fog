@@ -62,6 +62,18 @@ final class AppServices {
             Task { @MainActor in await party.upload(item, store: store) }
         }
         capture.onCatchDeleted = { id in Task { @MainActor in await party.delete(catchID: id) } }
+        // 釣果を後から直した・消したとき：その釣行を参照しているものを作り直す。
+        // レポートの文章（終わった釣行だけ）と、仲間へ送る釣行の要約。続けて直しても 1 回で済むよう、最後の修正から 1.5 秒待つ
+        let debouncer = SessionEditDebouncer()
+        capture.onSessionEdited = { [weak store] id in
+            Task { @MainActor in
+                debouncer.schedule(id) {
+                    guard let store else { return }
+                    _ = await report.attachReport(to: id)
+                    await party.refreshSummary(sessionID: id, store: store)
+                }
+            }
+        }
     }
 
     var hookRecorder: HookEventRecorder { HookEventRecorder(store: store, detection: detection, scheduler: scheduler, capture: capture, inventory: inventory) }
@@ -131,3 +143,20 @@ final class NotificationResponder: NSObject, UNUserNotificationCenterDelegate, @
         completionHandler([.banner, .sound])
     }
 }
+
+/// 釣行ごとに、最後の修正から少し待ってから 1 回だけ処理する（続けて直したとき、レポートを何度も作らない）
+@MainActor
+final class SessionEditDebouncer {
+    private var tasks: [UUID: Task<Void, Never>] = [:]
+
+    func schedule(_ id: UUID, delay: TimeInterval = 1.5, _ work: @escaping @MainActor () async -> Void) {
+        tasks[id]?.cancel()
+        tasks[id] = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            self?.tasks[id] = nil
+            await work()
+        }
+    }
+}
+

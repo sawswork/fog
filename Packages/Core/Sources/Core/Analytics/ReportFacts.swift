@@ -21,11 +21,14 @@ public struct ReportFacts: Hashable, Sendable {
     public var comparison: Analytics.Comparison?
     public var records: [String]   // 「初 アイナメ」「アイナメ 自己記録 42cm」
     public var hookLosses: Int
+    /// 釣った人ごとの尾数（自分だけの釣行なら空）。自分の端末で撮った、ほかの人の魚を含む（F-54）
+    public var byAngler: [(name: String, count: Int)] = []
 
     public static func == (l: ReportFacts, r: ReportFacts) -> Bool { l.spotName == r.spotName && l.startedAt == r.startedAt && l.catches == r.catches }
     public func hash(into h: inout Hasher) { h.combine(startedAt); h.combine(spotName) }
 
-    public static func make(session: Session, spotName: String, previous: Session?, allCatchesBefore: [(Catch, UUID)],
+    /// `ownName` は自分の名前。初物・自己記録は自分の魚だけで数える（ほかの人の魚は記録に入れない。F-54）
+    public static func make(session: Session, spotName: String, previous: Session?, allCatchesBefore: [(Catch, UUID)], ownName: String? = nil,
                             timeZone: TimeZone = TimeZone(identifier: "Asia/Tokyo") ?? .current) -> ReportFacts {
         let end = session.endedAt ?? Date()
         let catches = session.catches.sorted { $0.at < $1.at }
@@ -40,15 +43,30 @@ public struct ReportFacts: Hashable, Sendable {
         let dist = Analytics.conditionDistribution(of: catches, timeZone: timeZone)
         let winds = session.snapshots.compactMap(\.windSpeedMS)
         var records: [String] = []
-        var seen = allCatchesBefore
-        for c in catches {
+        var seen = allCatchesBefore.filter { $0.0.isOwn(ownName: ownName) }
+        for c in catches where c.isOwn(ownName: ownName) {
             let j = Analytics.judge(new: c, newSpotID: session.spotID, existing: seen)
             if j.isFirstSpecies { records.append("初 \(c.species)") }
             else if j.isPersonalBest, let l = c.lengthCm { records.append("\(c.species) 自己記録 \(Int(l.rounded()))cm") }
             else if j.isSpotRecord, let l = c.lengthCm { records.append("\(c.species) \(spotName)記録 \(Int(l.rounded()))cm") }
             seen.append((c, session.spotID))
         }
-        return ReportFacts(
+        // 釣った人ごと（ほかの人の魚があるときだけ）
+        var byAngler: [(name: String, count: Int)] = []
+        if catches.contains(where: { !$0.isOwn(ownName: ownName) }) {
+            var counts: [String: Int] = [:], order: [String] = []
+            for c in catches {
+                let name = c.isOwn(ownName: ownName) ? (ownName.flatMap { $0.isEmpty ? nil : $0 } ?? "自分") : (c.angler ?? "ほかの人")
+                if counts[name] == nil { order.append(name) }
+                counts[name, default: 0] += 1
+            }
+            // 尾数の多い順。同じなら先に釣った人から
+            byAngler = order.enumerated().sorted { a, b in
+                let ca = counts[a.element] ?? 0, cb = counts[b.element] ?? 0
+                return ca != cb ? ca > cb : a.offset < b.offset
+            }.map { (name: $0.element, count: counts[$0.element] ?? 0) }
+        }
+        var facts = ReportFacts(
             spotName: spotName,
             startedAt: session.startedAt,
             endedAt: end,
@@ -66,6 +84,8 @@ public struct ReportFacts: Hashable, Sendable {
             records: records,
             hookLosses: session.hookEvents.filter { $0.kind == .lost }.count
         )
+        facts.byAngler = byAngler
+        return facts
     }
 }
 
@@ -91,6 +111,7 @@ public enum ReportTemplate {
         } else {
             let sp = f.species.map { "\($0.name) \($0.count)尾\($0.maxCm.map { "（最大 \(Int($0.rounded()))cm）" } ?? "")" }.joined(separator: "、")
             lines.append("釣果 \(f.catches)尾：\(sp)。")
+            if !f.byAngler.isEmpty { lines.append("釣った人：" + f.byAngler.map { "\($0.name) \($0.count)尾" }.joined(separator: "、") + "。") }
             let times = f.catchTimes.map { fmt.string(from: $0) }.joined(separator: " ")
             lines.append("釣れた時刻 \(times)。")
             if let tide = topKey(f.catchesByTide), let light = topKey(f.catchesByLight) {

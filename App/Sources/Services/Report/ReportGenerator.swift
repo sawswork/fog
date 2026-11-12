@@ -74,15 +74,18 @@ final class ReportService {
 
     /// 終了した釣行にレポートを付けて保存し、保存後の釣行を返す。
     func attachReport(to sessionID: UUID) async -> Core.Session? {
-        guard var session = try? store.session(id: sessionID), session.endedAt != nil else { return nil }
+        guard let session = try? store.session(id: sessionID), session.endedAt != nil else { return nil }
         let spotName = (try? store.spot(id: session.spotID))?.name ?? "釣り場"
         let all = (try? store.sessions()) ?? []
         let previous = all.filter { $0.spotID == session.spotID && $0.id != session.id && $0.startedAt < session.startedAt }.max { $0.startedAt < $1.startedAt }
         let before = all.filter { $0.startedAt < session.startedAt }.flatMap { s in s.catches.map { ($0, s.spotID) } }
-        let facts = ReportFacts.make(session: session, spotName: spotName, previous: previous, allCatchesBefore: before)
-        session.report = await generator.generate(facts: facts)
-        try? store.upsert(session)
-        return session
+        let facts = ReportFacts.make(session: session, spotName: spotName, previous: previous, allCatchesBefore: before, ownName: AnglerSettings.ownName)
+        let report = await generator.generate(facts: facts)
+        // 文章を作っている間（数秒）に釣果が直されていることがあるので、保存の直前に読み直してレポートだけ入れる（古い内容で上書きしない）
+        guard var latest = try? store.session(id: sessionID) else { return nil }
+        latest.report = report
+        try? store.upsert(latest)
+        return latest
     }
 
     /// 釣果を記録した直後の記録更新判定（撮影の結果シート・通知用）。

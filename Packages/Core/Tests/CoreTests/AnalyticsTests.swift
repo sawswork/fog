@@ -183,4 +183,25 @@ final class AnalyticsL8Tests: XCTestCase {
         XCTAssertEqual(ReportTemplate.summary(blank), "ボウズ（2時間）")
         XCTAssertTrue(ReportTemplate.body(blank, timeZone: jst).contains("風が 5 m/s 以下"))
     }
+
+    /// レポート：ほかの人の魚は尾数には入るが、初物・自己記録には入れない。釣った人ごとの尾数を書く（釣った人を後から直したら、作り直しで変わる）
+    func testReportSeparatesOtherAnglers() {
+        let spot = UUID(), id = UUID()
+        let here = Coordinate(latitude: 41.8, longitude: 140.6)
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let mine = Catch(sessionID: id, at: start.addingTimeInterval(600), coordinate: here, species: "クロソイ", speciesConfidence: 0.9, lengthCm: 26)
+        let friend = Catch(sessionID: id, at: start.addingTimeInterval(1200), coordinate: here, species: "クロソイ", speciesConfidence: 0.9, lengthCm: 33, angler: "のぶ")
+        let session = Session(id: id, spotID: spot, startedAt: start, endedAt: start.addingTimeInterval(3600), catches: [mine, friend])
+        let facts = ReportFacts.make(session: session, spotName: "上磯", previous: nil, allCatchesBefore: [], ownName: "ねも")
+        XCTAssertEqual(facts.catches, 2)
+        XCTAssertEqual(facts.byAngler.map(\.name), ["ねも", "のぶ"])
+        XCTAssertEqual(facts.records, ["初 クロソイ"])                        // のぶの 33 cm は自己記録にしない
+        let body = ReportTemplate.body(facts)
+        XCTAssertTrue(body.contains("釣った人：ねも 1尾、のぶ 1尾。"), body)
+        // 全部自分なら「釣った人」の行は出さない
+        let solo = ReportFacts.make(session: Session(id: id, spotID: spot, startedAt: start, endedAt: start.addingTimeInterval(3600), catches: [mine]),
+                                    spotName: "上磯", previous: nil, allCatchesBefore: [], ownName: "ねも")
+        XCTAssertTrue(solo.byAngler.isEmpty)
+        XCTAssertFalse(ReportTemplate.body(solo).contains("釣った人"))
+    }
 }
