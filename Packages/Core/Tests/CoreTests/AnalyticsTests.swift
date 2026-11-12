@@ -163,6 +163,63 @@ final class AnalyticsL8Tests: XCTestCase {
         XCTAssertTrue(fresh[0].recentlyUpdated)
     }
 
+    /// 図鑑に仲間の魚を足す（F-66）：同じ魚種は 1 つにまとめて釣った人ごとに数え、自分の数字は変えない
+    func testGuideMergesFriendCatches() {
+        let now = date(2026, 11, 3, 12)
+        let own = Guide.entries(sessions: fixture(), now: now, timeZone: jst)
+        func f(_ n: Int, _ species: String, _ angler: String, _ cm: Double?, day: Int, local: Bool = false) -> GuideFriendCatch {
+            GuideFriendCatch(id: UUID(uuidString: "D0000000-0000-4000-8000-00000000000\(n)")!, species: species, angler: angler, lengthCm: cm,
+                             at: date(2026, 11, day, 9), isLocal: local)
+        }
+        let friends = [
+            f(1, "アイナメ", "ねも", 45, day: 1), f(2, "アイナメ", "ねも", nil, day: 2), f(3, "アイナメ", "たろ", 30, day: 2, local: true),
+            f(4, "ホッケ", "ねも", 33, day: 2), f(5, "ホッケ", "ねも", 36, day: 1),
+            f(6, "", "ねも", 20, day: 2),             // 魚種名なしは入れない
+            f(1, "アイナメ", "ねも", 45, day: 1),      // 同じ ID は 1 つに数える
+            f(7, "クロソイ", "自分", 28, day: 2),      // 仲間が撮った自分の魚は自分の行へ
+        ]
+        let merged = Guide.merged(own: own, friends: friends, ownName: "自分", now: now)
+        XCTAssertEqual(merged.count, 3)
+
+        let ainame = merged.first { $0.species == "アイナメ" }!
+        XCTAssertEqual(ainame.count, 3)             // 自分の数字はそのまま
+        XCTAssertEqual(ainame.maxLengthCm, 41)
+        XCTAssertFalse(ainame.isFriendOnly)
+        XCTAssertEqual(ainame.anglers.map(\.name), ["自分", "ねも", "たろ"])
+        XCTAssertEqual(ainame.anglers.map(\.count), [3, 2, 1])
+        XCTAssertEqual(ainame.anglers.map(\.isOwn), [true, false, false])
+        XCTAssertEqual(ainame.anglers[1].maxLengthCm, 45)
+        XCTAssertEqual(ainame.friendCatches.count, 3)
+        XCTAssertEqual(ainame.friendBest?.lengthCm, 45)
+        XCTAssertEqual(ainame.totalCount, 6)
+        XCTAssertEqual(ainame.latestAt, date(2026, 11, 2, 9))
+
+        let hokke = merged.first { $0.species == "ホッケ" }!
+        XCTAssertTrue(hokke.isFriendOnly)
+        XCTAssertEqual(hokke.anglers.map(\.name), ["ねも"])
+        XCTAssertEqual(hokke.anglers[0].count, 2)
+        XCTAssertEqual(hokke.anglers[0].maxLengthCm, 36)
+        XCTAssertEqual(hokke.bestCatchID, UUID(uuidString: "D0000000-0000-4000-8000-000000000005"))
+        XCTAssertEqual(hokke.shownMaxLengthCm, 36)
+        XCTAssertNil(hokke.maxLengthCm)
+        XCTAssertTrue(hokke.recentlyUpdated)        // 初めて見たのが 1 週間以内
+
+        let soi = merged.first { $0.species == "クロソイ" }!
+        XCTAssertEqual(soi.count, 1)
+        XCTAssertEqual(soi.anglers.count, 1)
+        XCTAssertTrue(soi.anglers[0].isOwn)
+        XCTAssertEqual(soi.anglers[0].count, 2)
+        XCTAssertTrue(soi.friends.isEmpty)
+
+        // 並び：最大サイズは自分の記録、無ければ仲間の記録で比べる
+        XCTAssertEqual(Guide.sorted(merged, by: .maxLength).map(\.species).first, "アイナメ")
+        XCTAssertEqual(Guide.sorted(merged, by: .count).map(\.species), ["アイナメ", "クロソイ", "ホッケ"])
+        // 仲間がいなければ、自分の 1 行だけ
+        let alone = Guide.merged(own: own, friends: [], ownName: "自分", now: now)
+        XCTAssertEqual(alone.count, 2)
+        XCTAssertEqual(alone.first { $0.species == "アイナメ" }!.anglers.map(\.name), ["自分"])
+    }
+
     func testReportTemplateWorksWithoutFoundationModels() {
         let sessions = fixture()
         let before = sessions[0].catches.map { ($0, spotA) } + sessions[1].catches.map { ($0, spotA) }
