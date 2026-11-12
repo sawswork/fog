@@ -278,12 +278,18 @@ struct SpeciesDetailView: View {
     var body: some View {
         GeometryReader { geo in
             VStack(spacing: DS.Spacing.s) {
-                // ベストショット（タップで全画面）。左下に魚種名と最大サイズ
-                ZStack(alignment: .bottomLeading) {
-                    if let data = GuideFriends.thumbnail(for: shown, services: services), let ui = UIImage(data: data) {
-                        Image(uiImage: ui).resizable().scaledToFill()
-                    } else { DS.Color.surface }
-                    LinearGradient(colors: [.clear, DS.Color.background.opacity(0.9)], startPoint: showsAnglers ? .top : .center, endPoint: .bottom)
+                // ベストショット（タップで全画面）。左下に魚種名と最大サイズ。
+                // 枠の大きさを先に決め、写真はその中に敷いて切る。以前は写真と文字を同じ ZStack に入れていて、
+                // 縦長の写真だと ZStack が枠より高くなり、下の文字（魚種名・釣った人の札）が枠の外へ出て見えなかった（2026-11-12 開発者の画面）
+                Color.clear
+                    .overlay {
+                        if let data = GuideFriends.thumbnail(for: shown, services: services), let ui = UIImage(data: data) {
+                            Image(uiImage: ui).resizable().scaledToFill()
+                        } else { DS.Color.surface }
+                    }
+                    .clipped()
+                    .overlay { LinearGradient(colors: [.clear, DS.Color.background.opacity(0.9)], startPoint: showsAnglers ? .top : .center, endPoint: .bottom) }
+                    .overlay(alignment: .bottomLeading) {
                     VStack(alignment: .leading, spacing: DS.Spacing.s) {
                         // 誰が釣ったか：釣った人ごとの尾数と最大（自分が先頭）
                         if showsAnglers { anglerRow }
@@ -299,7 +305,7 @@ struct SpeciesDetailView: View {
                     }
                     .padding(DS.Spacing.l)
                 }
-                .frame(height: geo.size.height * 0.30).clipped()
+                .frame(width: geo.size.width, height: geo.size.height * 0.30)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     let bestID: UUID? = shown.isFriendOnly ? shown.friendBest?.id : shown.bestCatchID
@@ -347,14 +353,18 @@ struct SpeciesDetailView: View {
                             HStack(spacing: DS.Spacing.s) {
                                 ForEach(shots) { shot in
                                     VStack(spacing: 3) {
-                                        ZStack(alignment: .bottomLeading) {
-                                            if let data = thumbnail(for: shot), let ui = UIImage(data: data) {
-                                                Image(uiImage: ui).resizable().scaledToFill()
-                                            } else { DS.Color.surface }
-                                            Text(shot.lengthCm.map { "\(Int($0.rounded()))cm" } ?? "未計測").font(DS.Font.number(11)).foregroundStyle(.white)
-                                                .padding(.horizontal, 5).padding(.vertical, 2).background(Color.black.opacity(0.55), in: Capsule()).padding(4)
-                                        }
-                                        .frame(width: 72, height: 72)
+                                        // 写真は 72 pt の枠に敷いて切り、サイズの札は枠に重ねる（縦長の写真でも札が枠の外へ出ない）
+                                        Color.clear.frame(width: 72, height: 72)
+                                            .overlay {
+                                                if let data = thumbnail(for: shot), let ui = UIImage(data: data) {
+                                                    Image(uiImage: ui).resizable().scaledToFill()
+                                                } else { DS.Color.surface }
+                                            }
+                                            .clipped()
+                                            .overlay(alignment: .bottomLeading) {
+                                                Text(shot.lengthCm.map { "\(Int($0.rounded()))cm" } ?? "未計測").font(DS.Font.number(11)).foregroundStyle(.white)
+                                                    .padding(.horizontal, 5).padding(.vertical, 2).background(Color.black.opacity(0.55), in: Capsule()).padding(4)
+                                            }
                                         .overlay(alignment: .topLeading) {
                                             // 仲間の魚には釣った人の名前
                                             if let name = shot.angler {

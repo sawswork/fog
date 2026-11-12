@@ -65,9 +65,63 @@ final class PartyService {
     var isAvailable: Bool { container != nil && Self.isEnabled }
 
     /// 仲間の投稿（自分の端末からの投稿を除く）。新しい順。サイズが無いものは、この端末で入れた値があればそれを入れて返す
+    /// 魚が写っていないと判定した釣果は、隠す設定（既定）なら外す（F-67）
     var others: [SharedCatch] {
         let me = AnglerSettings.deviceID
-        return items.filter { $0.device != me }.map { withLocalLength($0) }.sorted { $0.at > $1.at }
+        let hide = Self.hidesNoFish
+        return items.filter { $0.device != me && !(hide && noFishIDs.contains($0.id.uuidString)) }.map { withLocalLength($0) }.sorted { $0.at > $1.at }
+    }
+
+    // MARK: 魚が写っていない釣果（この端末の表示から外す。F-67）
+
+    private static let noFishKey = "fog.party.noFish"
+    private static let fishCheckedKey = "fog.party.fishChecked"
+    private static let hideNoFishKey = "fog.party.hideNoFish"
+
+    /// 魚が写っていない写真の釣果を隠すか（設定 > 釣り人。既定はオン）
+    static var hidesNoFish: Bool {
+        get { UserDefaults.standard.object(forKey: hideNoFishKey) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: hideNoFishKey) }
+    }
+
+    /// サムネイルに魚が写っていないと判定した仲間の釣果。相手の記録は変えず、この端末の表示にだけ使う
+    private(set) var noFishIDs: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "fog.party.noFish") ?? [])
+    private var fishChecked: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "fog.party.fishChecked") ?? [])
+    private var screening = false
+
+    /// いま隠している件数（設定の表示用）
+    var hiddenNoFishCount: Int {
+        let me = AnglerSettings.deviceID
+        return items.filter { $0.device != me && noFishIDs.contains($0.id.uuidString) }.count
+    }
+
+    /// 設定の切替のあと、表示を作り直させる
+    func noFishSettingChanged() { revision += 1 }
+
+    /// 仲間の釣果のうち、まだ見ていないサムネイルに魚が写っているかを端末内で判定する（1 件につき 1 回）。
+    /// サムネイルがまだ届いていないものは次の回に見る
+    func screenThumbnails() async {
+        guard !screening else { return }
+        screening = true
+        defer { screening = false }
+        let me = AnglerSettings.deviceID
+        var changed = false
+        for s in items where s.device != me && !fishChecked.contains(s.id.uuidString) {
+            guard let data = thumbnail(for: s.id), let cg = UIImage(data: data)?.cgImage else { continue }
+            let result = await FishDetector.check(cg)
+            FishDetector.note(result, source: "仲間の釣果 \(s.species)")
+            fishChecked.insert(s.id.uuidString)
+            if !result.hasFish { noFishIDs.insert(s.id.uuidString); changed = true }
+        }
+        // 消えた釣果の分は片づける
+        if !items.isEmpty {
+            let alive = Set(items.map { $0.id.uuidString })
+            noFishIDs.formIntersection(alive)
+            fishChecked.formIntersection(alive)
+        }
+        UserDefaults.standard.set(Array(noFishIDs), forKey: Self.noFishKey)
+        UserDefaults.standard.set(Array(fishChecked), forKey: Self.fishCheckedKey)
+        if changed { revision += 1 }
     }
 
     // MARK: 仲間の釣果のサイズ（この端末だけの手入力）
@@ -140,20 +194,21 @@ final class PartyService {
     /// 画面を開いたとき用：前の同期から `maxAge` 秒たっていれば、30 分の間隔を待たずに取り直す。
     /// 仲間がサイズや釣った人を直したあと、こちらの画面が古いままにならないように（2026-11-12 開発者の指摘）
     func syncIfStale(store: FogStore, maxAge: TimeInterval = 60, now: Date = .now) async {
-        if let last = lastSyncAt, now.timeIntervalSince(last) < maxAge { return }
+        if let last = lastSyncAt, now.timeIntervalSince(last) < maxAge { await screenThumbnails(); return }
         await syncIfNeeded(store: store, now: now, force: true)
     }
 
     /// 未送信の釣果を送り、全員の釣果を取る。30 分に 1 回（`force` で無視）
     func syncIfNeeded(store: FogStore, now: Date = .now, force: Bool = false) async {
         guard isAvailable, !syncing else { return }
-        guard force || gate.tryAcquire("party", now: now) else { return }
+        guard force || gate.tryAcquire("party", now: now) else { await screenThumbnails(); return }
         syncing = true
         defer { syncing = false }
         await uploadPending(store: store)
         await fetchAll()
         lastSyncAt = now
         save()
+        await screenThumbnails()
     }
 
     /// 釣果の保存直後：その 1 件だけすぐ送る

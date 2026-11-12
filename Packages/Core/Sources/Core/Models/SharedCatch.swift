@@ -38,9 +38,11 @@ public struct SharedCatch: Codable, Identifiable, Hashable, Sendable {
         return "\(name) \(Int(l.rounded()))cm"
     }
 
-    /// 釣果情報の地図ピンに載せる形（F-44 と同じ `FeedCatch`）。出典は「仲間の釣果」
-    public func feedCatch(sourceTitle: String = "仲間の釣果") -> FeedCatch {
-        FeedCatch(itemID: "shared:" + id.uuidString, title: "\(headline)（\(angler)）", link: nil, publishedAt: at, feedTitle: sourceTitle,
-                  placeName: spotName.isEmpty ? "釣り場" : spotName, coordinate: coordinate, species: species.isEmpty ? [] : [species])
+    /// 釣果情報の地図ピンに載せる形（F-44 と同じ `FeedCatch`）。出典は「仲間の釣果」。
+    /// `place` を渡すと、場所の名前と位置をそれにする（自分の登録釣り場に合わせるとき。`FeedCatchExtractor.localPlace`）
+    public func feedCatch(sourceTitle: String = "仲間の釣果", place: FeedCatchExtractor.Place? = nil, idPrefix: String = "shared:") -> FeedCatch {
+        FeedCatch(itemID: idPrefix + id.uuidString, title: "\(headline)（\(angler)）", link: nil, publishedAt: at, feedTitle: sourceTitle,
+                  placeName: place?.name ?? (spotName.isEmpty ? "釣り場" : spotName), coordinate: place?.coordinate ?? coordinate,
+                  species: species.isEmpty ? [] : [species])
     }
 }

@@ -17,18 +17,22 @@ struct RecentCatchesStrip: View {
             HStack(alignment: .top, spacing: 8) {
                 ForEach(recent, id: \.id) { c in
                     VStack(alignment: .leading, spacing: 3) {
-                        ZStack(alignment: .bottomLeading) {
-                            if let data = services.store.thumbnail(catchID: c.id), let ui = UIImage(data: data) {
-                                Image(uiImage: ui).resizable().scaledToFill()
-                            } else {
-                                DS.Color.surface.overlay(Image(systemName: "fish.fill").foregroundStyle(DS.Color.faded))
+                        // 写真は枠に敷いて切り、サイズの札は枠に重ねる（縦長の写真でも札が枠の外へ出ない）
+                        Color.clear.frame(width: tile, height: tile)
+                            .overlay {
+                                if let data = services.store.thumbnail(catchID: c.id), let ui = UIImage(data: data) {
+                                    Image(uiImage: ui).resizable().scaledToFill()
+                                } else {
+                                    DS.Color.surface.overlay(Image(systemName: "fish.fill").foregroundStyle(DS.Color.faded))
+                                }
                             }
-                            if let l = c.lengthCm {
-                                Text("\(Int(l.rounded()))").font(DS.Font.number(12)).foregroundStyle(.white)
-                                    .padding(.horizontal, 5).padding(.vertical, 2).background(Color.black.opacity(0.5), in: Capsule()).padding(4)
+                            .clipped()
+                            .overlay(alignment: .bottomLeading) {
+                                if let l = c.lengthCm {
+                                    Text("\(Int(l.rounded()))").font(DS.Font.number(12)).foregroundStyle(.white)
+                                        .padding(.horizontal, 5).padding(.vertical, 2).background(Color.black.opacity(0.5), in: Capsule()).padding(4)
+                                }
                             }
-                        }
-                        .frame(width: tile, height: tile)
                         .clipShape(RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
                         Text(c.species.isEmpty ? "魚" : c.species).font(DS.Font.caption).foregroundStyle(DS.Color.textPrimary).lineLimit(1)
                         Text(JPFormat.md(c.at)).font(.system(size: 9)).foregroundStyle(DS.Color.textTertiary)

@@ -73,4 +73,37 @@ final class FeedCatchTests: XCTestCase {
         XCTAssertEqual(out.map(\.placeName), ["北ふ頭"])
         XCTAssertEqual(out[0].species, ["サバ"].filter { words.contains($0) })
     }
+
+    /// 仲間の釣果の場所は、近くに自分の登録釣り場があればその名前と位置にする（300 m 以内でいちばん近いもの）
+    func testLocalPlacePrefersOwnSpot() {
+        let green = Coordinate(latitude: 41.8160, longitude: 140.6540)
+        let spots: [(name: String, coordinate: Coordinate)] = [(name: "上磯漁港緑地", coordinate: green), (name: "函館港", coordinate: hakodate)]
+        // 約 170 m 東
+        let caught = Coordinate(latitude: 41.8160, longitude: 140.6560)
+        let p = FeedCatchExtractor.localPlace(for: caught, fallbackName: "北斗漁港", spots: spots)
+        XCTAssertEqual(p.name, "上磯漁港緑地")
+        XCTAssertEqual(p.coordinate.longitude, 140.6540, accuracy: 1e-9)
+        // 離れていれば相手の付けた名前と釣果の位置のまま
+        let far = Coordinate(latitude: 41.8300, longitude: 140.6540)
+        let q = FeedCatchExtractor.localPlace(for: far, fallbackName: "北斗漁港", spots: spots)
+        XCTAssertEqual(q.name, "北斗漁港")
+        XCTAssertEqual(q.coordinate.latitude, 41.8300, accuracy: 1e-9)
+        XCTAssertEqual(FeedCatchExtractor.localPlace(for: far, fallbackName: "", spots: []).name, "釣り場")
+
+        // ピンは自分の釣り場の名前でまとまる（自分の釣果と仲間の釣果が同じピンに入る）
+        let at = Date(timeIntervalSince1970: 1_794_000_000)
+        let friend = SharedCatch(id: UUID(), angler: "のぶ", device: "d2", species: "クロソイ", lengthCm: nil, at: at, coordinate: caught, spotName: "北斗漁港", updatedAt: at)
+        let mine = SharedCatch(id: UUID(), angler: "自分", device: "d1", species: "アイナメ", lengthCm: 45, at: at.addingTimeInterval(600), coordinate: green, spotName: "上磯漁港緑地", updatedAt: at)
+        let pins = FeedCatchExtractor.pins([
+            friend.feedCatch(place: p),
+            mine.feedCatch(sourceTitle: "自分の釣果", place: FeedCatchExtractor.localPlace(for: green, fallbackName: "上磯漁港緑地", spots: spots), idPrefix: "own:"),
+        ])
+        XCTAssertEqual(pins.count, 1)
+        XCTAssertEqual(pins[0].placeName, "上磯漁港緑地")
+        XCTAssertEqual(pins[0].entries.map(\.feedTitle), ["自分の釣果", "仲間の釣果"])
+        XCTAssertEqual(pins[0].entries[0].title, "アイナメ 45cm（自分）")
+        XCTAssertTrue(pins[0].entries[0].itemID.hasPrefix("own:"))
+        // 何も渡さなければ今までどおり
+        XCTAssertEqual(friend.feedCatch().placeName, "北斗漁港")
+    }
 }

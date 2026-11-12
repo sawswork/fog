@@ -801,7 +801,8 @@ struct FeedPinSheet: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(pin.placeName).font(DS.Font.number(20)).foregroundStyle(DS.Color.textPrimary)
                 Spacer()
-                Text("\(pin.entries.count) 記事").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+                // 記事だけなら「記事」、自分の記録や仲間の釣果が入っていれば「件」
+                Text("\(pin.entries.count) \(pin.entries.allSatisfy(\.isArticle) ? "記事" : "件")").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
             }
             if !pin.speciesCounts.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -830,7 +831,9 @@ struct FeedPinSheet: View {
                     }
                 }
             }
-            Text("見出しと要約に出た港名・釣り場名と魚種名から置いています。場所が書かれていない記事は出ません").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+            if pin.entries.contains(where: \.isArticle) {
+                Text("記事は、見出しと要約に出た港名・釣り場名と魚種名から置いています。場所が書かれていない記事は出ません").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+            }
         }
         .padding(DS.Spacing.l)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

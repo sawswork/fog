@@ -401,14 +401,20 @@ struct FishDetailView: View {
             section("自分の釣果 \(own.count) 尾 · タップで詳細") {
                 HStack(spacing: DS.Spacing.s) {
                     ForEach(own.prefix(4), id: \.id) { c in
-                        ZStack(alignment: .bottomLeading) {
-                            if let data = services.store.thumbnail(catchID: c.id), let ui = UIImage(data: data) {
-                                Image(uiImage: ui).resizable().scaledToFill()
-                            } else { DS.Color.surface }
-                            Text(c.lengthCm.map { "\(Int($0.rounded()))cm" } ?? "").font(DS.Font.number(10)).foregroundStyle(.white)
-                                .padding(.horizontal, 4).padding(.vertical, 1).background(Color.black.opacity(0.55), in: Capsule()).padding(3)
-                        }
-                        .frame(width: 60, height: 60).clipShape(RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
+                        Color.clear.frame(width: 60, height: 60)
+                            .overlay {
+                                if let data = services.store.thumbnail(catchID: c.id), let ui = UIImage(data: data) {
+                                    Image(uiImage: ui).resizable().scaledToFill()
+                                } else { DS.Color.surface }
+                            }
+                            .clipped()
+                            .overlay(alignment: .bottomLeading) {
+                                if let l = c.lengthCm {
+                                    Text("\(Int(l.rounded()))cm").font(DS.Font.number(10)).foregroundStyle(.white)
+                                        .padding(.horizontal, 4).padding(.vertical, 1).background(Color.black.opacity(0.55), in: Capsule()).padding(3)
+                                }
+                            }
+                            .clipShape(RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous))
                     }
                     Spacer()
                     Image(systemName: "chevron.right").font(.system(size: 12, weight: .bold)).foregroundStyle(DS.Color.textTertiary)
