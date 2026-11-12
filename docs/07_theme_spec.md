@@ -123,7 +123,7 @@
   "font": "serif", "numberFont": "serif",
   "idleNumberSize": 86, "idleFaceGap": 0.2, "idleTopScrim": 0.42, "idleBottomScrim": 0.9,
   "idleEffects": ["fireflies", "sparkles"],
-  "mapFrame": true, "menu": "panel", "glow": 0.5
+  "mapFrame": true, "menu": "panel", "glow": 0.5, "idleCaptions": false
 }
 ```
 
@@ -138,6 +138,7 @@
 | `mapFrame` | 釣行中の地図を額（外の線＋四隅の `chart_corner`）で囲む |
 | `menu` | `panel` で、右上のメニューがテーマの色と印（`chart_menu_*`）の札になる。省略は iOS の一覧 |
 | `glow` | 開始・撮影ボタンのまわりの光の強さ（0〜1、省略 1） |
+| `idleCaptions` | 待機中の説明の文字（数字の上の「いまの釣れ率」と、開始ボタンの下の一言）を出すか。省略は出す。絵を見せたいテーマは `false`（なぞっている時刻と釣れ率は、グラフの上の札に出る） |
 
 画像（テーマのフォルダ。無いものは標準の海図の素材）：
 

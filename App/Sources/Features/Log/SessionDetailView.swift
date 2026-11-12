@@ -12,6 +12,12 @@ struct SessionDetailView: View {
     var friendCatches: [SharedCatch] = []
     @Environment(AppServices.self) private var services
     @State private var viewingShared: SharedCatch?
+    @State private var sizingShared: SharedCatch?
+    /// 同行者と仲間の釣果を、最新の共有データから決め直したもの（開いたときに渡された値は古くなる）
+    @State private var liveCompanions: [String]?
+    @State private var liveFriendCatches: [SharedCatch]?
+    private var shownCompanions: [String] { liveCompanions ?? companions }
+    private var shownFriendCatches: [SharedCatch] { liveFriendCatches ?? friendCatches }
     @State private var deleting: Catch?
     @State private var removedIDs: Set<UUID> = []
     /// 答え合わせ（F-29）：釣行の時間範囲の釣れ率の推移と評価
@@ -41,11 +47,10 @@ struct SessionDetailView: View {
                     }
                 }
                 panel("釣果 \(shown.catches.count)尾 · 写真をタップで拡大、行をタップで修正、長押しで削除") { catches }
-                if !friendCatches.isEmpty {
-                    panel("仲間の釣果 \(friendCatches.count)尾 · タップで写真") {
-                        ForEach(friendCatches) { c in
-                            Button { viewingShared = c } label: { SharedCatchRow(item: c, thumbnail: services.party.thumbnail(for: c.id)) }
-                                .buttonStyle(.plain)
+                if !shownFriendCatches.isEmpty {
+                    panel("仲間の釣果 \(shownFriendCatches.count)尾 · タップで写真、未計測は鉛筆でサイズを入れる") {
+                        ForEach(shownFriendCatches) { c in
+                            SharedCatchLine(item: c, onPhoto: { viewingShared = c }, onEdit: { sizingShared = c })
                         }
                     }
                 }
@@ -63,6 +68,14 @@ struct SessionDetailView: View {
         .onAppear { Perf.mark("釣行詳細を開いた") }
         .onDisappear { Perf.mark("釣行詳細を閉じた") }
         .task { computeReview() }
+        // 仲間の釣果は、開いたときに取り直す（相手がサイズや釣った人を直していても古いままにしない）
+        .task {
+            reloadParty()
+            await services.party.syncIfStale(store: services.store)
+            reloadParty()
+        }
+        .onChange(of: services.party.revision) { _, _ in reloadParty() }
+        .sharedLengthEditor(item: $sizingShared)
         .fullScreenCover(isPresented: $showMap) { SessionMapSheet(session: shown, spotName: spotName, hidden: $hiddenCatches, showStays: $showStays) }
         .sheet(item: $editing) { item in CatchEditSheet(catchItem: item) { reloadSession() }.presentationDetents([.large]) }
         .onReceive(NotificationCenter.default.publisher(for: .fogStoreDidChange)) { _ in reloadSession() }
@@ -83,10 +96,10 @@ struct SessionDetailView: View {
             Text("\(JPFormat.ymdw(shown.startedAt)) \(JPFormat.hm(shown.startedAt))〜\(shown.endedAt == nil ? "記録中" : JPFormat.hm(end)) · \(JPFormat.duration(end.timeIntervalSince(shown.startedAt)))")
                 .font(DS.Font.label).foregroundStyle(DS.Color.textSecondary)
             // いっしょに行った人（F-62）
-            if !companions.isEmpty {
+            if !shownCompanions.isEmpty {
                 HStack(spacing: DS.Spacing.xs) {
                     Image(systemName: "person.2.fill").font(.system(size: 11, weight: .semibold)).foregroundStyle(DS.Color.textTertiary)
-                    ForEach(companions, id: \.self) { name in
+                    ForEach(shownCompanions, id: \.self) { name in
                         Text(name).font(.system(size: 11, weight: .semibold)).foregroundStyle(DS.Color.background)
                             .padding(.horizontal, 7).padding(.vertical, 3).background(DS.Color.sun, in: Capsule())
                     }
@@ -289,6 +302,12 @@ struct SessionDetailView: View {
                 .onTapGesture { showMap = true }
             }
         }
+    }
+
+    private func reloadParty() {
+        let live = PartyCompanions.resolve(sessionID: session.id, services: services)
+        // 共有を使っていない・まだ届いていないときは、開いたときの値のまま
+        if !live.companions.isEmpty || !live.catches.isEmpty { liveCompanions = live.companions; liveFriendCatches = live.catches }
     }
 
     /// 釣果を直した・消したあと：釣行を読み直し、答え合わせも計算し直す（どのパネルも同じ記録を見る）

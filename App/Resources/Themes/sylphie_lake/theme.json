@@ -52,6 +52,7 @@
     "idleEffects": ["fireflies", "sparkles"],
     "mapFrame": true,
     "menu": "panel",
-    "glow": 0.5
+    "glow": 0.5,
+    "idleCaptions": false
   }
 }

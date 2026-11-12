@@ -264,7 +264,7 @@ struct ChartHomeView: View {
     }
 
     private static let menuItems: [(item: MenuItem, title: String, symbol: String)] = [
-        (.log, "ログ", "list.bullet.rectangle"), (.guide, "図鑑", "book"), (.spots, "釣り場の地図", "map"),
+        (.log, "記録", "list.bullet.rectangle"), (.guide, "図鑑", "book"), (.spots, "釣り場の地図", "map"),
         (.feed, "釣果情報", "newspaper"), (.assistant, "相談", "bubble.left.and.text.bubble.right"), (.settings, "設定", "gearshape"),
     ]
 
@@ -473,8 +473,10 @@ struct ChartHomeView: View {
                     // 顔を見せるテーマ：数字は上へ寄せ、数字の下を空ける。標準は均等
                     if skin.idleFaceGap == nil { Spacer(minLength: 8) } else { Color.clear.frame(height: 2) }
                     VStack(spacing: 2) {
-                        Text(vm.scrub != nil ? JPFormat.hm(vm.scrub ?? vm.now) + " の釣れ率" : "いまの釣れ率")
-                            .font(ChartStyle.font(12.5, .medium)).foregroundStyle(skin.idleFaceGap == nil ? ChartStyle.gray1 : ChartStyle.white.opacity(0.9))
+                        if skin.idleCaptions {
+                            Text(vm.scrub != nil ? JPFormat.hm(vm.scrub ?? vm.now) + " の釣れ率" : "いまの釣れ率")
+                                .font(ChartStyle.font(12.5, .medium)).foregroundStyle(skin.idleFaceGap == nil ? ChartStyle.gray1 : ChartStyle.white.opacity(0.9))
+                        }
                         Text("\(vm.shownScore)").font(ChartStyle.number(skin.idleNumberSize, .bold)).monospacedDigit()
                             .foregroundStyle(vm.scrub != nil ? ChartStyle.orange : ChartStyle.white)
                             .contentTransition(.numericText()).minimumScaleFactor(0.6).lineLimit(1)
@@ -502,8 +504,12 @@ struct ChartHomeView: View {
                         .frame(height: 124).padding(.top, 14)
                     if skin.idleFaceGap == nil { Spacer(minLength: 12) } else { Color.clear.frame(height: 12) }
                     startOrb
-                    Text("押すと釣行が始まり、この港の図が開きます").font(ChartStyle.font(11.5, .medium)).foregroundStyle(ChartStyle.gray2)
-                        .padding(.top, 14)
+                    if skin.idleCaptions {
+                        Text("押すと釣行が始まり、この港の図が開きます").font(ChartStyle.font(11.5, .medium)).foregroundStyle(ChartStyle.gray2)
+                            .padding(.top, 14)
+                    } else {
+                        Color.clear.frame(height: 18)
+                    }
                     if skin.idleFaceGap == nil { Spacer(minLength: 8) } else { Color.clear.frame(height: 6) }
                 }
     }

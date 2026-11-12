@@ -35,7 +35,7 @@ struct GuideView: View {
         VStack(spacing: DS.Spacing.s) {
             header
             if mode == .caught, let othersNote {
-                Text("ほかの人の魚（\(othersNote)）は図鑑に入れていません。自分の魚なら、ログの釣行で釣果の行をタップして「釣った人」を自分に直すと入ります")
+                Text("ほかの人の魚（\(othersNote)）は図鑑に入れていません。自分の魚なら、記録の釣行で釣果の行をタップして「釣った人」を自分に直すと入ります")
                     .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary).frame(maxWidth: .infinity, alignment: .leading)
             }
             if mode == .all {
