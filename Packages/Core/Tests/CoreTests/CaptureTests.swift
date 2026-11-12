@@ -96,4 +96,31 @@ final class CaptureTests: XCTestCase {
         let new = makeCatch(at: 10, species: "アイナメ", conf: 0.95, length: 30, photo: "p2")
         XCTAssertEqual(CatchMerger.merge(base: base, new: new).species, "クジメ")
     }
+
+    /// 魚が写っているかの判定（F-67）：魚のラベルが無く、魚以外だとはっきり分かるときだけ「写っていない」
+    func testFishPresence() {
+        // 魚のラベルがあれば魚（人や景色が一緒でも）
+        let held = FishPresence.judge(labels: [("people", 0.9), ("adult", 0.8), ("fish", 0.35), ("outdoor", 0.9)], hasSubject: true)
+        XCTAssertTrue(held.hasFish); XCTAssertEqual(held.reason, .fishLabel)
+        XCTAssertTrue(FishPresence.judge(labels: [("sky", 0.9), ("seafood", 0.12)], hasSubject: false).hasFish)
+        // 夜の海の景色：被写体が無く、空と海
+        let night = FishPresence.judge(labels: [("sky", 0.92), ("night_sky", 0.7), ("ocean", 0.8), ("outdoor", 0.95), ("fish", 0.01)], hasSubject: false)
+        XCTAssertFalse(night.hasFish); XCTAssertEqual(night.reason, .scenery)
+        XCTAssertEqual(night.evidence, "sky 0.92")
+        // 岸壁に立つ人：人が写っていて魚のラベルが無い。"fishing" は魚に数えない
+        let person = FishPresence.judge(labels: [("people", 0.85), ("fishing", 0.6), ("harbor", 0.5)], hasSubject: true)
+        XCTAssertFalse(person.hasFish); XCTAssertEqual(person.reason, .people)
+        // 画面の写し
+        XCTAssertEqual(FishPresence.judge(labels: [("screenshot", 0.9)], hasSubject: nil).reason, .other)
+        // 迷ったら残す：被写体があって魚のラベルも人も無い（暗い魚など）、ラベルが取れない、景色でも被写体がある・分からない
+        XCTAssertTrue(FishPresence.judge(labels: [("outdoor", 0.9), ("rock", 0.4), ("night", 0.5)], hasSubject: true).hasFish)
+        XCTAssertEqual(FishPresence.judge(labels: [], hasSubject: nil).reason, .unsure)
+        XCTAssertTrue(FishPresence.judge(labels: [("ocean", 0.9)], hasSubject: nil).hasFish)
+        XCTAssertTrue(FishPresence.judge(labels: [("ocean", 0.9)], hasSubject: true).hasFish)
+        // 弱いラベルは根拠にしない
+        XCTAssertTrue(FishPresence.judge(labels: [("people", 0.3), ("sky", 0.2)], hasSubject: false).hasFish)
+        // "starfish" "fishing_rod" は魚に数えない、"fish_market" は語が合うので魚
+        XCTAssertEqual(FishPresence.judge(labels: [("starfish", 0.9), ("fishing_rod", 0.9), ("people", 0.9)], hasSubject: true).reason, .people)
+        XCTAssertTrue(FishPresence.judge(labels: [("fish_market", 0.5), ("people", 0.9)], hasSubject: true).hasFish)
+    }
 }

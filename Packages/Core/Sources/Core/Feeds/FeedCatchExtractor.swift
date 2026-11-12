@@ -14,6 +14,9 @@ public struct FeedCatch: Hashable, Sendable, Identifiable {
     /// 文中に出た順。書かれた言葉のまま（アブラコ など）
     public var species: [String]
 
+    /// RSS の記事か（false は自分の記録・仲間の釣果）
+    public var isArticle: Bool { !(itemID.hasPrefix("own:") || itemID.hasPrefix("shared:")) }
+
     public init(itemID: String, title: String, link: String?, publishedAt: Date?, feedTitle: String, placeName: String, coordinate: Coordinate, species: [String]) {
         self.itemID = itemID; self.title = title; self.link = link; self.publishedAt = publishedAt; self.feedTitle = feedTitle
         self.placeName = placeName; self.coordinate = coordinate; self.species = species
@@ -89,6 +92,22 @@ public enum FeedCatchExtractor {
             FeedCatch(itemID: item.id, title: item.title, link: item.link, publishedAt: item.publishedAt, feedTitle: item.feedTitle,
                       placeName: p.name, coordinate: p.coordinate, species: names)
         }
+    }
+
+    /// 釣果（仲間の端末の釣果など）の場所を、自分の登録釣り場に合わせる。
+    /// 位置から `radiusM` 以内でいちばん近い登録釣り場があれば、その名前と位置。無ければ相手の付けた名前と釣果の位置。
+    /// 相手の端末が同じ場所を別の名前（最寄りの港名など）で登録していても、自分の地図では自分の釣り場にまとまる
+    public static func localPlace(for coordinate: Coordinate, fallbackName: String, spots: [(name: String, coordinate: Coordinate)],
+                                  radiusM: Double = 300) -> Place {
+        let fallback = Place(name: fallbackName.isEmpty ? "釣り場" : fallbackName, coordinate: coordinate)
+        guard coordinate.isPlausible else { return fallback }
+        var nearest: (name: String, coordinate: Coordinate, d: Double)?
+        for s in spots where s.coordinate.isPlausible && !s.name.isEmpty {
+            let d = Geo.distanceMeters(s.coordinate, coordinate)
+            if d <= radiusM, d < (nearest?.d ?? .infinity) { nearest = (name: s.name, coordinate: s.coordinate, d: d) }
+        }
+        guard let hit = nearest else { return fallback }
+        return Place(name: hit.name, coordinate: hit.coordinate)
     }
 
     /// 場所ごとにまとめたピン（新しい順の記事を持つ）

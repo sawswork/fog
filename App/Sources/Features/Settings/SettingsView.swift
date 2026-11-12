@@ -724,6 +724,7 @@ struct AnglerSettingsView: View {
     @State private var newMember = ""
     @FocusState private var memberFocused: Bool
     @State private var sharing = PartyService.isEnabled
+    @State private var hidesNoFish = PartyService.hidesNoFish
     @State private var syncing = false
 
     var body: some View {
@@ -785,6 +786,19 @@ struct AnglerSettingsView: View {
                         .disabled(syncing || !services.party.isAvailable)
                     }
                     .settingsRow()
+                    Toggle(isOn: $hidesNoFish) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("魚が写っていない写真は出さない").font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
+                            Text("仲間から届いた釣果のうち、景色や人だけの写真を、記録・図鑑・地図に出しません（端末内で判定。相手の記録は変えません）。いま \(services.party.hiddenNoFishCount) 件を隠しています")
+                                .font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
+                        }
+                    }
+                    .tint(DS.Color.accent)
+                    .settingsRow()
+                    .onChange(of: hidesNoFish) { _, on in
+                        PartyService.hidesNoFish = on
+                        services.party.noFishSettingChanged()
+                    }
                     if !services.party.isAvailable, sharing {
                         Text("iCloud のコンテナが設定されていないため共有できません").font(DS.Font.caption).foregroundStyle(DS.Color.holiday).settingsRow()
                     }

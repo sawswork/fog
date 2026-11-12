@@ -178,17 +178,38 @@ final class SpotsViewModel {
     // MARK: 釣果情報のピン（F-44）
 
     /// RSS の記事から取り出した「どこで何が釣れたか」を裏で計算し直す。場所は同梱の港名と登録釣り場、魚種は図鑑の名前と別名。
-    /// 記事・仲間の釣果・釣り場・現在地（10 km 単位）が同じなら計算しない
+    /// 自分の端末の釣果と仲間の釣果も同じピンに載せる。仲間の釣果の場所は、300 m 以内に自分の登録釣り場があればその名前にまとめる
+    /// （相手の端末が同じ場所を別の名前で登録していても、自分の地図では自分の釣り場に出る。2026-11-12 開発者の指摘）。
+    /// 記事・記録・仲間の釣果・釣り場・現在地（10 km 単位）が同じなら計算しない
     func refreshFeedPins(enabled: Bool) {
         guard let services else { return }
         guard enabled else { feedPins = []; feedPinsKey = ""; return }
         let spots = ((try? services.store.spots()) ?? []).filter { $0.isRegistered && $0.coordinate.isPlausible }.map { (name: $0.name, coordinate: $0.coordinate) }
         let near = currentLocation ?? spots.first?.coordinate
-        let key = "\(services.feeds.revision)|\(services.party.revision)|\(spots.map(\.name).joined(separator: ","))|\(near.map { "\(Int($0.latitude * 10)),\(Int($0.longitude * 10))" } ?? "-")"
+        let key = "\(services.feeds.revision)|\(services.party.revision)|\(services.store.revision)|\(spots.map(\.name).joined(separator: ","))|\(near.map { "\(Int($0.latitude * 10)),\(Int($0.longitude * 10))" } ?? "-")"
         guard key != feedPinsKey else { return }
         feedPinsKey = key
         let items = services.feeds.items
-        let shared = services.party.others.filter { $0.coordinate.isPlausible }.map { $0.feedCatch() }
+        let shared = services.party.others.filter { $0.coordinate.isPlausible }.map {
+            $0.feedCatch(place: FeedCatchExtractor.localPlace(for: $0.coordinate, fallbackName: $0.spotName, spots: spots, radiusM: SessionDetectionService.registeredSpotRadiusM))
+        }
+        // 自分の端末の釣果（この端末で撮った仲間の魚も）。場所は釣行の釣り場
+        let spotByID = Dictionary(((try? services.store.spots()) ?? []).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let ownName = AnglerSettings.ownName
+        var own: [FeedCatch] = []
+        for session in (try? services.store.sessions()) ?? [] {
+            guard let spot = spotByID[session.spotID] else { continue }
+            for c in session.catches {
+                let at = c.coordinate.isPlausible ? c.coordinate : spot.coordinate
+                guard at.isPlausible else { continue }
+                let place = spot.coordinate.isPlausible
+                    ? FeedCatchExtractor.Place(name: spot.name, coordinate: spot.coordinate)
+                    : FeedCatchExtractor.localPlace(for: at, fallbackName: spot.name, spots: spots, radiusM: SessionDetectionService.registeredSpotRadiusM)
+                own.append(SharedCatch.make(from: c, ownName: ownName, device: "", spotName: spot.name)
+                    .feedCatch(sourceTitle: "自分の記録", place: place, idPrefix: "own:"))
+            }
+        }
+        let ownCatches = own
         let catalog = (try? services.store.species()) ?? Species.initialCatalog
         let ports = portCatalog.ports
         feedPinsTask?.cancel()
@@ -200,6 +221,7 @@ final class SpotsViewModel {
                 if Task.isCancelled { return }
                 catches += FeedCatchExtractor.extract(item, places: places, speciesWords: words)
             }
+            catches += ownCatches
             catches += shared
             let pins = FeedCatchExtractor.pins(catches)
             await MainActor.run { [weak self] in

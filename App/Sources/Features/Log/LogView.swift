@@ -17,6 +17,17 @@ struct LogView: View {
     @State private var pickedPhotos: [PhotosPickerItem] = []
     @State private var importing = false
     @State private var importMessage: String?
+    /// 魚が写っていないので取り込まなかった写真（「それでも取り込む」で取り込める）
+    @State private var noFishPhotos: [String] = []
+
+    /// 取り込みの結果の文
+    private static func importText(_ r: PhotoImportService.ManualResult) -> String {
+        var parts: [String] = []
+        if r.imported > 0 { parts.append("\(r.imported) 枚を取り込みました" + (r.measured > 0 ? "（メジャーから \(r.measured) 枚のサイズを判定）" : "")) }
+        if !r.noFish.isEmpty { parts.append("魚が写っていない \(r.noFish.count) 枚は取り込みませんでした") }
+        if r.skipped > 0 { parts.append("\(r.skipped) 枚は取り込み済みか読めない写真でした") }
+        return parts.isEmpty ? "取り込める写真がありませんでした（取り込み済みか、読めない写真）" : parts.joined(separator: "。")
+    }
 
     enum AnalysisKind: String, Identifiable { case hour, tide, spot, map; var id: String { rawValue } }
 
@@ -66,12 +77,28 @@ struct LogView: View {
             Task {
                 let r = await services.photoImport.importAssets(identifiers: ids)
                 importing = false
-                importMessage = r.imported == 0 ? "取り込める写真がありませんでした（取り込み済みか、読めない写真）" : "\(r.imported) 枚を取り込みました" + (r.measured > 0 ? "（メジャーから \(r.measured) 枚のサイズを判定）" : "") + (r.skipped > 0 ? "・\(r.skipped) 枚は飛ばしました" : "")
+                importMessage = Self.importText(r)
+                noFishPhotos = r.noFish
                 model.refresh()
             }
         }
         .alert("写真の取り込み", isPresented: Binding(get: { importMessage != nil }, set: { if !$0 { importMessage = nil } })) {
-            Button("OK", role: .cancel) { importMessage = nil }
+            // 魚が写っていないと判定した写真は、確かめたうえで取り込める（判定が外れたとき用。F-67）
+            if !noFishPhotos.isEmpty {
+                Button("それでも取り込む") {
+                    let ids = noFishPhotos
+                    noFishPhotos = []
+                    importMessage = nil
+                    importing = true
+                    Task {
+                        let r = await services.photoImport.importAssets(identifiers: ids, allowNoFish: true)
+                        importing = false
+                        importMessage = Self.importText(r)
+                        model.refresh()
+                    }
+                }
+            }
+            Button("OK", role: .cancel) { importMessage = nil; noFishPhotos = [] }
         } message: { Text(importMessage ?? "") }
         .confirmationDialog("この釣行を削除", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
             Button("削除", role: .destructive) { if let d = deleting { model.delete(d) }; deleting = nil }
