@@ -128,6 +128,12 @@ final class PartyService {
         await upload([(shared, item.photoLocalIdentifier ?? item.photoLocalIdentifiers.first)], store: store)
     }
 
+    /// 釣果を直した・消したあと：その釣行の要約（釣った人・尾数）をすぐ送り直す。仲間の画面の「仲間の釣行」に出る数が変わる
+    func refreshSummary(sessionID: UUID, store: FogStore) async {
+        guard isAvailable, let session = try? store.session(id: sessionID) else { return }
+        await uploadSessions([session], store: store)
+    }
+
     /// 釣果の削除：公開 DB からも消す（圏外なら次の同期で）
     func delete(catchID: UUID) async {
         uploaded[catchID.uuidString] = nil

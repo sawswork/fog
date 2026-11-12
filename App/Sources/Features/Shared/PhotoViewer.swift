@@ -146,6 +146,9 @@ struct PhotoViewer: View {
 struct SessionMapSheet: View {
     let session: Core.Session
     let spotName: String
+    /// 隠している釣果と、立った場所を出すか（釣行詳細の小さい地図と同じ切替）
+    @Binding var hidden: Set<UUID>
+    @Binding var showStays: Bool
     @Environment(\.dismiss) private var dismiss
     @Environment(AppServices.self) private var services
     @State private var catches: [Catch] = []
@@ -156,18 +159,20 @@ struct SessionMapSheet: View {
     var body: some View {
         // 軌跡は、飛び値を外して「立った場所」にまとめてから描く（測位が粗いと、線が数百 m 先へ飛んでぐちゃぐちゃになる）
         let cleaned = TrackCleaner.clean(session.track, anchors: catches.map(\.coordinate), end: session.endedAt)
-        let shown = catches.filter { $0.coordinate.isPlausible }.sorted { $0.at < $1.at }
+        // 番号は釣れた順（潮位のグラフの凡例と同じ）。隠した釣果は出さない
+        let ordered = catches.sorted { $0.at < $1.at }
+        let shown = ordered.enumerated().filter { $0.element.coordinate.isPlausible && !hidden.contains($0.element.id) }
         // 同じ場所で釣れた魚は、扇のようにずらして並べる
-        let fan = TrackCleaner.fanOut(shown.map(\.coordinate), radiusM: 10)
+        let fan = TrackCleaner.fanOut(shown.map(\.element.coordinate), radiusM: 10)
         let lost = session.hookEvents.filter { $0.kind == .lost && $0.coordinate.isPlausible }
-        let all = cleaned.stays.map(\.coordinate) + shown.map(\.coordinate)
+        let all = cleaned.stays.map(\.coordinate) + ordered.map(\.coordinate).filter(\.isPlausible)
         ZStack(alignment: .top) {
             MapReader { proxy in
                 Map(initialPosition: .region(SessionMapGeometry.region(fitting: all)), interactionModes: [.pan, .zoom, .rotate]) {
-                    if cleaned.path.count >= 2 {
+                    if showStays, cleaned.path.count >= 2 {
                         MapPolyline(coordinates: cleaned.path.map(\.cl)).stroke(Color.white.opacity(0.75), style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [5, 5]))
                     }
-                    ForEach(cleaned.stays) { stay in
+                    ForEach(showStays ? cleaned.stays : []) { stay in
                         Annotation("", coordinate: stay.coordinate.cl) { StayMarker(minutes: stay.minutes, compact: false) }
                     }
                     ForEach(lost, id: \.id) { e in
@@ -176,15 +181,16 @@ struct SessionMapSheet: View {
                                 .frame(width: 16, height: 16).background(Color.black.opacity(0.55), in: Circle())
                         }
                     }
-                    ForEach(Array(shown.enumerated()), id: \.element.id) { index, c in
+                    ForEach(Array(shown.enumerated()), id: \.element.element.id) { k, item in
+                        let c = item.element
                         let picked = selectedCatchID == c.id && editing
                         Annotation(c.species + (c.lengthCm.map { " \(Int($0.rounded()))" } ?? ""), coordinate: c.coordinate.cl) {
-                            Text("\(index + 1)").font(.system(size: 12, weight: .bold)).foregroundStyle(.black)
+                            Text("\(item.offset + 1)").font(.system(size: 12, weight: .bold)).foregroundStyle(.black)
                                 .frame(width: 24, height: 24)
                                 .background(picked ? DS.Color.sun : DS.Color.accent, in: Circle())
                                 .overlay(Circle().stroke(.white, lineWidth: 2))
                                 .scaleEffect(picked ? 1.3 : 1)
-                                .offset(SessionMapGeometry.fanOffset(index: fan[index].index, count: fan[index].count))
+                                .offset(SessionMapGeometry.fanOffset(index: fan[k].index, count: fan[k].count))
                         }
                     }
                 }
@@ -220,6 +226,10 @@ struct SessionMapSheet: View {
                             .frame(width: 36, height: 36).background(Color.black.opacity(0.55), in: Circle())
                     }
                     .buttonStyle(.plain)
+                }
+                // 印の切替：立った場所と、釣果 1 尾ずつ
+                if !editing {
+                    SessionMapToggles(catches: catches, hidden: $hidden, showStays: $showStays, onDark: true)
                 }
                 Spacer()
                 if !catches.isEmpty { editBar }
@@ -304,13 +314,60 @@ enum SessionMapGeometry {
         return MKCoordinateRegion(center: center, latitudinalMeters: span, longitudinalMeters: span)
     }
 
-    /// 同じ場所の印の k 番目（全 n 個）を、上向きの扇に並べるずれ（pt）
-    static func fanOffset(index k: Int, count n: Int) -> CGSize {
+    /// 同じ場所の印の k 番目（全 n 個）を、上向きの扇に並べるずれ（pt）。`radius` は扇の半径（省略は印の数で決める）
+    static func fanOffset(index k: Int, count n: Int, radius: Double? = nil) -> CGSize {
         guard n > 1 else { return .zero }
         let step = min(40.0, 150.0 / Double(n - 1))
         let angle = (-90.0 + (Double(k) - Double(n - 1) / 2) * step) * .pi / 180
-        let radius = n > 4 ? 40.0 : 30.0
-        return CGSize(width: cos(angle) * radius, height: sin(angle) * radius)
+        let r = radius ?? (n > 4 ? 40.0 : 30.0)
+        return CGSize(width: cos(angle) * r, height: sin(angle) * r)
+    }
+}
+
+/// 地図に出す印の切替（釣行詳細の小さい地図と全画面の地図で共通）。「立った場所」と、釣果 1 尾ずつ（番号は釣れた順）。
+/// 重なって見づらいとき、見たい魚だけを残せる
+struct SessionMapToggles: View {
+    let catches: [Catch]
+    @Binding var hidden: Set<UUID>
+    @Binding var showStays: Bool
+    /// 航空写真の上（全画面の地図）に置くとき
+    var onDark = false
+
+    var body: some View {
+        let ordered = catches.sorted { $0.at < $1.at }
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                chip(on: showStays) { showStays.toggle() } label: {
+                    Circle().fill(Color.white.opacity(0.3)).overlay(Circle().stroke(.white, lineWidth: 1)).frame(width: 11, height: 11)
+                    Text("立った場所")
+                }
+                if ordered.count >= 2 {
+                    chip(on: hidden.isEmpty) { hidden = hidden.isEmpty ? Set(ordered.map(\.id)) : [] } label: { Text(hidden.isEmpty ? "釣果を全部隠す" : "釣果を全部出す") }
+                }
+                ForEach(Array(ordered.enumerated()), id: \.element.id) { i, c in
+                    chip(on: !hidden.contains(c.id)) {
+                        if hidden.contains(c.id) { hidden.remove(c.id) } else { hidden.insert(c.id) }
+                    } label: {
+                        Text("\(i + 1)").font(.system(size: 10, weight: .bold)).foregroundStyle(.black)
+                            .frame(width: 15, height: 15).background(DS.Color.accent, in: Circle())
+                        Text((c.species.isEmpty ? "魚" : c.species) + (c.lengthCm.map { " \(Int($0.rounded()))" } ?? ""))
+                    }
+                }
+            }
+        }
+    }
+
+    private func chip<Label: View>(on: Bool, action: @escaping () -> Void, @ViewBuilder label: () -> Label) -> some View {
+        Button(action: action) {
+            HStack(spacing: 5) { label() }
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(onDark ? Color.white : DS.Color.textPrimary)
+                .padding(.horizontal, 9).frame(height: 28)
+                .background(onDark ? Color.black.opacity(0.55) : DS.Color.surface, in: Capsule())
+                .overlay(Capsule().strokeBorder(on ? DS.Color.accent : Color.clear, lineWidth: 1.2))
+                .opacity(on ? 1 : 0.45)
+        }
+        .buttonStyle(.plain)
     }
 }
 

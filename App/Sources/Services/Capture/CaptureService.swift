@@ -47,6 +47,8 @@ final class CaptureService {
     }
     /// 釣果を保存したあとに呼ばれる（仲間との共有のアップロード。F-54）
     var onCatchSaved: ((Catch) -> Void)?
+    /// 釣果を後から直した・消したあとに呼ばれる（その釣行のレポートと、仲間へ送る要約を作り直す）
+    var onSessionEdited: ((UUID) -> Void)?
 
     init(store: FogStore, environment: EnvironmentService, detection: SessionDetectionService, classifier: SpeciesClassifying = CoreMLSpeciesClassifier()) {
         self.store = store
@@ -211,6 +213,7 @@ final class CaptureService {
         session.catches[index].angler = (angler == AnglerSettings.ownName || angler?.isEmpty == true) ? nil : angler
         try? store.upsert(session)
         onCatchSaved?(session.catches[index])
+        onSessionEdited?(session.id)
     }
 
     /// 釣果の削除。写真は求められたときだけライブラリからも消す（削除は分析に即時反映）。
@@ -221,6 +224,7 @@ final class CaptureService {
         let item = (try? store.catches())?.first { $0.id == id }
         try? store.deleteCatch(id: id)
         onCatchDeleted?(id)
+        if let item { onSessionEdited?(item.sessionID) }
         if deletePhoto, let item {
             await PhotoLibraryService.delete(identifiers: [item.photoLocalIdentifier].compactMap { $0 } + item.photoLocalIdentifiers)
         }
@@ -234,6 +238,7 @@ final class CaptureService {
         session.catches[index].lengthErrorCm = lengthCm == nil ? nil : 0.5
         try? store.upsert(session)
         onCatchSaved?(session.catches[index])
+        onSessionEdited?(session.id)
     }
 
     /// 魚種の確定（候補 3 種の 1 タップ、F-10）／後からの修正（F-24）。
@@ -246,6 +251,7 @@ final class CaptureService {
         if corrected { session.catches[index].speciesConfidence = 1 }
         try? store.upsert(session)
         onCatchSaved?(session.catches[index])
+        onSessionEdited?(session.id)
         // 端末内の補正テーブルに学習（次回の候補順に反映。F-24）
         CoreMLSpeciesClassifier.learn(predicted: predicted, corrected: species)
     }

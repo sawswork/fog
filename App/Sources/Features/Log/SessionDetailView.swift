@@ -25,13 +25,16 @@ struct SessionDetailView: View {
     /// 修正する釣果と、修正のあとに読み直した釣行（`session` は開いたときの値のまま）
     @State private var editing: Catch?
     @State private var refreshed: Core.Session?
+    /// 地図に出す印の切替：隠している釣果と、立った場所を出すか
+    @State private var hiddenCatches: Set<UUID> = []
+    @State private var showStays = true
     private var shown: Core.Session { refreshed ?? session }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: DS.Spacing.m) {
                 header
-                if let r = session.report {
+                if let r = shown.report {
                     panel("レポート") {
                         Text(r.summary).font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
                         Text(r.body).font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary).fixedSize(horizontal: false, vertical: true)
@@ -48,8 +51,11 @@ struct SessionDetailView: View {
                 }
                 panel("答え合わせ · 釣れ率の推移と釣れた瞬間（白い点）") { reviewChart }
                 panel("潮位と釣れた時刻") { timeline }
-                if session.pressureLog?.count ?? 0 >= 2 { panel("現場の気圧（端末の気圧計）") { pressure } }
-                panel("立ち位置と釣れた場所 · タップで全画面") { track }
+                if shown.pressureLog?.count ?? 0 >= 2 { panel("現場の気圧（端末の気圧計）") { pressure } }
+                panel("立ち位置と釣れた場所 · 下の印をタップで表示を切替、地図をタップで全画面") {
+                    SessionMapToggles(catches: shown.catches, hidden: $hiddenCatches, showStays: $showStays)
+                    track
+                }
             }
             .padding(DS.Spacing.l)
         }
@@ -57,7 +63,7 @@ struct SessionDetailView: View {
         .onAppear { Perf.mark("釣行詳細を開いた") }
         .onDisappear { Perf.mark("釣行詳細を閉じた") }
         .task { computeReview() }
-        .fullScreenCover(isPresented: $showMap) { SessionMapSheet(session: shown, spotName: spotName) }
+        .fullScreenCover(isPresented: $showMap) { SessionMapSheet(session: shown, spotName: spotName, hidden: $hiddenCatches, showStays: $showStays) }
         .sheet(item: $editing) { item in CatchEditSheet(catchItem: item) { reloadSession() }.presentationDetents([.large]) }
         .onReceive(NotificationCenter.default.publisher(for: .fogStoreDidChange)) { _ in reloadSession() }
         .fullScreenCover(item: $viewing) { c in PhotoViewer(catchItem: c) }
@@ -69,12 +75,12 @@ struct SessionDetailView: View {
 
     /// 釣り場名、日付と時間帯、数字（尾数・最大・時間・針ロスト）
     private var header: some View {
-        let end = session.endedAt ?? Date()
-        let maxLen = session.catches.compactMap(\.lengthCm).max()
-        let losses = session.hookEvents.filter { $0.kind == .lost }.count
+        let end = shown.endedAt ?? Date()
+        let maxLen = shown.catches.compactMap(\.lengthCm).max()
+        let losses = shown.hookEvents.filter { $0.kind == .lost }.count
         return VStack(alignment: .leading, spacing: DS.Spacing.s) {
             Text(spotName).font(DS.Font.number(24)).foregroundStyle(DS.Color.textPrimary)
-            Text("\(JPFormat.ymdw(session.startedAt)) \(JPFormat.hm(session.startedAt))〜\(session.endedAt == nil ? "記録中" : JPFormat.hm(end)) · \(JPFormat.duration(end.timeIntervalSince(session.startedAt)))")
+            Text("\(JPFormat.ymdw(shown.startedAt)) \(JPFormat.hm(shown.startedAt))〜\(shown.endedAt == nil ? "記録中" : JPFormat.hm(end)) · \(JPFormat.duration(end.timeIntervalSince(shown.startedAt)))")
                 .font(DS.Font.label).foregroundStyle(DS.Color.textSecondary)
             // いっしょに行った人（F-62）
             if !companions.isEmpty {
@@ -87,9 +93,9 @@ struct SessionDetailView: View {
                 }
             }
             HStack(spacing: DS.Spacing.s) {
-                stat("尾数", session.isBlank ? "ボウズ" : "\(session.catches.count)", unit: session.isBlank ? "" : "尾", highlight: !session.isBlank)
+                stat("尾数", shown.isBlank ? "ボウズ" : "\(shown.catches.count)", unit: shown.isBlank ? "" : "尾", highlight: !shown.isBlank)
                 stat("最大", maxLen.map { "\(Int($0.rounded()))" } ?? "—", unit: "cm")
-                stat("魚種", "\(Set(session.catches.map(\.species).filter { !$0.isEmpty }).count)", unit: "種")
+                stat("魚種", "\(Set(shown.catches.map(\.species).filter { !$0.isEmpty }).count)", unit: "種")
                 stat("針ロスト", "\(losses)", unit: "回")
             }
         }
@@ -129,7 +135,7 @@ struct SessionDetailView: View {
                 Text("推移を計算中").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
             } else {
                 Chart {
-                    RectangleMark(xStart: .value("s", session.startedAt), xEnd: .value("e", session.endedAt ?? Date()), yStart: .value("y0", 0), yEnd: .value("y1", 100))
+                    RectangleMark(xStart: .value("s", shown.startedAt), xEnd: .value("e", shown.endedAt ?? Date()), yStart: .value("y0", 0), yEnd: .value("y1", 100))
                         .foregroundStyle(DS.Color.textPrimary.opacity(0.05))
                     ForEach(reviewPoints, id: \.at) { p in
                         LineMark(x: .value("時刻", p.at), y: .value("釣れ率", p.score)).foregroundStyle(DS.Color.accent).interpolationMethod(.monotone)
@@ -154,7 +160,7 @@ struct SessionDetailView: View {
 
     /// 釣行の時間範囲の推移を計算する（`SessionReviewer`）
     private func computeReview() {
-        guard let out = SessionReviewer.review(session, services: services) else { return }
+        guard let out = SessionReviewer.review(shown, services: services) else { return }
         reviewPoints = out.points
         review = out.result
         tideCurve = out.tide
@@ -164,7 +170,7 @@ struct SessionDetailView: View {
     /// 現場の気圧（F-35）：釣行中に端末の気圧計で 5 分ごとに記録した値
     private var pressure: some View {
         Group {
-            if let log = session.pressureLog, log.count >= 2, let first = log.first, let last = log.last {
+            if let log = shown.pressureLog, log.count >= 2, let first = log.first, let last = log.last {
                 VStack(alignment: .leading, spacing: DS.Spacing.xs) {
                     HStack(alignment: .firstTextBaseline) {
                         Spacer()
@@ -186,12 +192,17 @@ struct SessionDetailView: View {
 
     /// 条件の推移：推算した潮位（海の青）に満干の時刻、釣れた時刻（テーマ色の線）。推算が無ければスナップショットの潮位
     private var timeline: some View {
-        let catches = session.catches.sorted { $0.at < $1.at }
-        let levels = (tideCurve.isEmpty ? session.snapshots.compactMap { s in s.tideLevelCm.map { (at: s.at, levelCm: $0) } } : tideCurve)
-        let lo = (levels.map(\.levelCm).min() ?? 0) - 10, hi = (levels.map(\.levelCm).max() ?? 100) + 10
+        let catches = shown.catches.sorted { $0.at < $1.at }
+        let levels = (tideCurve.isEmpty ? shown.snapshots.compactMap { s in s.tideLevelCm.map { (at: s.at, levelCm: $0) } } : tideCurve)
+        let lo = (levels.map(\.levelCm).min() ?? 0) - 10, hi = (levels.map(\.levelCm).max() ?? 100) + 34
+        // 番号の高さ：前の釣果と 12 分以内なら 1 段ずつ上げる（3 段まで）
+        let stagger: [Int] = catches.indices.reduce(into: []) { out, i in
+            let close = i > 0 && catches[i].at.timeIntervalSince(catches[i - 1].at) < 12 * 60
+            out.append(close ? ((out.last ?? 0) + 1) % 3 : 0)
+        }
         return VStack(alignment: .leading, spacing: DS.Spacing.xs) {
             HStack {
-                Text(session.snapshots.first?.tideName ?? "").font(DS.Font.caption).foregroundStyle(DS.Color.sea)
+                Text(shown.snapshots.first?.tideName ?? "").font(DS.Font.caption).foregroundStyle(DS.Color.sea)
                 Spacer()
                 ForEach(tideExtremes, id: \.at) { e in
                     Text("\(e.kind == .high ? "満" : "干") \(HomeViewModel.clock(e.at)) \(Int(e.levelCm.rounded()))cm").font(DS.Font.caption).foregroundStyle(DS.Color.sea)
@@ -204,45 +215,70 @@ struct SessionDetailView: View {
                         .interpolationMethod(.catmullRom)
                     LineMark(x: .value("時刻", p.at), y: .value("潮位", p.levelCm), series: .value("系列", "潮位")).foregroundStyle(DS.Color.sea).interpolationMethod(.catmullRom)
                 }
-                RectangleMark(xStart: .value("s", session.startedAt), xEnd: .value("e", session.endedAt ?? Date()), yStart: .value("y0", lo), yEnd: .value("y1", hi))
+                RectangleMark(xStart: .value("s", shown.startedAt), xEnd: .value("e", shown.endedAt ?? Date()), yStart: .value("y0", lo), yEnd: .value("y1", hi))
                     .foregroundStyle(DS.Color.textPrimary.opacity(0.05))
+                // 釣れた時刻：細い線と、潮位の線の上の番号つきの印。名前とサイズは下の凡例（図の上に書くと、近い時刻で重なる）
                 ForEach(Array(catches.enumerated()), id: \.element.id) { i, c in
-                    RuleMark(x: .value("釣果", c.at)).foregroundStyle(DS.Color.accent).lineStyle(StrokeStyle(lineWidth: 2))
-                        // 近い時刻の釣果は上下に振り分けて重ねない
-                        .annotation(position: i % 2 == 0 ? .top : .bottom, alignment: .center) {
-                            Text(c.species + (c.lengthCm.map { " \(Int($0.rounded()))" } ?? "")).font(DS.Font.caption).foregroundStyle(DS.Color.accent)
+                    RuleMark(x: .value("釣果", c.at)).foregroundStyle(DS.Color.accent.opacity(0.45)).lineStyle(StrokeStyle(lineWidth: 1))
+                    PointMark(x: .value("釣果", c.at), y: .value("潮位", level(at: c.at, in: levels) ?? lo))
+                        .foregroundStyle(DS.Color.accent).symbolSize(70)
+                        // 近い時刻の番号は高さを変えて重ねない
+                        .annotation(position: .top, alignment: .center, spacing: CGFloat(2 + 13 * stagger[i])) {
+                            Text("\(i + 1)").font(.system(size: 10, weight: .bold)).foregroundStyle(DS.Color.background)
+                                .frame(width: 15, height: 15).background(DS.Color.accent, in: Circle())
                         }
                 }
             }
             .chartYScale(domain: lo...hi)
             .chartYAxis { AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { _ in AxisValueLabel().font(.system(size: 9)).foregroundStyle(DS.Color.sea) } }
             .chartXAxis { AxisMarks(values: .stride(by: .hour)) { _ in AxisValueLabel(format: .dateTime.hour()).font(.system(size: 9)).foregroundStyle(DS.Color.textTertiary) } }
-            .frame(height: 120)
+            .frame(height: 130)
+            // 凡例：番号・時刻・魚種・サイズ（地図の番号と同じ、釣れた順）
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: DS.Spacing.s, alignment: .leading), GridItem(.flexible(), alignment: .leading)], alignment: .leading, spacing: 4) {
+                ForEach(Array(catches.enumerated()), id: \.element.id) { i, c in
+                    HStack(spacing: 5) {
+                        Text("\(i + 1)").font(.system(size: 10, weight: .bold)).foregroundStyle(DS.Color.background)
+                            .frame(width: 15, height: 15).background(DS.Color.accent, in: Circle())
+                        Text(JPFormat.hm(c.at)).font(DS.Font.number(11)).foregroundStyle(DS.Color.textSecondary)
+                        Text((c.species.isEmpty ? "魚" : c.species) + (c.lengthCm.map { " \(Int($0.rounded()))cm" } ?? ""))
+                            .font(DS.Font.caption).foregroundStyle(DS.Color.textPrimary).lineLimit(1).minimumScaleFactor(0.8)
+                    }
+                }
+            }
         }
     }
 
-    /// 立った場所と釣れた場所（モノトーン地図）。軌跡は飛び値を外して「立った場所」にまとめてから描く
+    /// その時刻の潮位（いちばん近い点）
+    private func level(at date: Date, in levels: [(at: Date, levelCm: Double)]) -> Double? {
+        levels.min { abs($0.at.timeIntervalSince(date)) < abs($1.at.timeIntervalSince(date)) }?.levelCm
+    }
+
+    /// 立った場所と釣れた場所（モノトーン地図）。軌跡は飛び値を外して「立った場所」にまとめてから描く。
+    /// 小さい地図では、立った場所を結ぶ線と 2 分未満の場所は出さない（重なって見づらい）。釣果は釣れた順の番号つき
     private var track: some View {
         let cleaned = TrackCleaner.clean(shown.track, anchors: shown.catches.map(\.coordinate), end: shown.endedAt)
-        let catchPoints = shown.catches.map(\.coordinate).filter(\.isPlausible)
-        let all = cleaned.stays.map(\.coordinate) + catchPoints
+        let ordered = shown.catches.sorted { $0.at < $1.at }
+        let visible = ordered.enumerated().filter { $0.element.coordinate.isPlausible && !hiddenCatches.contains($0.element.id) }
+        let fan = TrackCleaner.fanOut(visible.map(\.element.coordinate), radiusM: 10)
+        let stays = showStays ? cleaned.stays.filter { $0.minutes >= 2 } : []
+        let all = cleaned.stays.map(\.coordinate) + ordered.map(\.coordinate).filter(\.isPlausible)
         return Group {
             if !all.isEmpty {
                 Map(initialPosition: .region(SessionMapGeometry.region(fitting: all)), interactionModes: []) {
-                    if cleaned.path.count >= 2 {
-                        MapPolyline(coordinates: cleaned.path.map(\.cl)).stroke(Color.white.opacity(0.6), style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [4, 4]))
-                    }
-                    ForEach(cleaned.stays) { stay in
+                    ForEach(stays) { stay in
                         Annotation("", coordinate: stay.coordinate.cl) { StayMarker(minutes: stay.minutes, compact: true) }
                     }
-                    ForEach(shown.catches.filter { $0.coordinate.isPlausible }, id: \.id) { c in
-                        Annotation("", coordinate: c.coordinate.cl) {
-                            Circle().fill(DS.Color.accent).frame(width: 9, height: 9).overlay(Circle().stroke(.white, lineWidth: 1.5))
+                    ForEach(Array(visible.enumerated()), id: \.element.element.id) { k, item in
+                        Annotation("", coordinate: item.element.coordinate.cl) {
+                            Text("\(item.offset + 1)").font(.system(size: 10, weight: .bold)).foregroundStyle(.black)
+                                .frame(width: 18, height: 18).background(DS.Color.accent, in: Circle())
+                                .overlay(Circle().stroke(.white, lineWidth: 1.5))
+                                .offset(SessionMapGeometry.fanOffset(index: fan[k].index, count: fan[k].count, radius: 20))
                         }
                     }
                 }
                 .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll))
-                .frame(height: 180)
+                .frame(height: 200)
                 .clipShape(RoundedRectangle(cornerRadius: DS.Radius.card, style: .continuous))
                 // タップで全画面の地図（ピンチで拡大。F-55）
                 .overlay(alignment: .bottomTrailing) {
@@ -255,8 +291,11 @@ struct SessionDetailView: View {
         }
     }
 
+    /// 釣果を直した・消したあと：釣行を読み直し、答え合わせも計算し直す（どのパネルも同じ記録を見る）
     private func reloadSession() {
-        if let latest = try? services.store.session(id: session.id) { refreshed = latest }
+        guard let latest = try? services.store.session(id: session.id), latest != shown else { return }
+        refreshed = latest
+        computeReview()
     }
 
     /// 釣果の一覧。長押しで削除（記録だけ／写真も）。
