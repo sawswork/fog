@@ -8,6 +8,13 @@ import os
 ///
 /// 2026-11-09：位置情報での自動開始・終了（F-01）は既定でオフ（精度と電池の問題。開発者の指示）。
 /// 開始・終了はホームのボタン（F-48）か撮影で行い、記録中の立ち位置だけ低頻度で記録する。自動検出は 設定 > 自動検出 でオンにできる。
+///
+/// 2026-11-19：自動検出を作り直した（開発者「釣り場についたら自動で開始、離れたら終了。精度と電池を改善できる？」）。
+/// - **始めるのは登録した釣り場だけ**。海のそばかどうかを調べて「どこでも」始める方式はやめた（自宅や店で始まった原因）
+/// - 待機中は釣り場の境界（半径 300 m のジオフェンス）を OS に見張らせるだけで、アプリは位置を取らない
+/// - 境界に入ったら、滞在（感度に応じて 5〜20 分）を確かめる間だけ位置を取り、確かめられたら着いた時刻にさかのぼって始める
+/// - 記録中は、始めた場所を中心にした境界をもう 1 つ置く。出たら位置の更新を起こして、離れた時刻で終える
+/// - 境界の知らせは、アプリが終了していても OS が起動して届ける。画面が無くても動くよう、ここで必要な準備をする（`start` は何度呼んでもよい）
 @MainActor
 @Observable
 final class SessionDetectionService {
@@ -36,6 +43,14 @@ final class SessionDetectionService {
     private let environment: EnvironmentService
     private let shore = ShoreOracle()
     private var task: Task<Void, Never>?
+    private var started = false
+    /// 境界に入ってから、滞在を確かめている間の見張り（時間切れで待機へ戻す）
+    private var candidateTask: Task<Void, Never>?
+    private var awayCheckTask: Task<Void, Never>?
+    /// 滞在の確認中に処理した最後の位置の時刻（1 秒ごとに届くので間引く）
+    private var lastCandidateFixAt: Date?
+    /// 最後に処理した位置の時刻（長く途切れたら、数えかけの滞在を捨てる）
+    private var lastHandledAt: Date?
     /// 終了直後に呼ばれる（写真の取り込み・レポート生成など）。保存済みの釣行 ID を渡す
     var onSessionEnded: ((UUID) -> Void)?
     private static let log = Logger(subsystem: "fog", category: "session")
@@ -58,7 +73,7 @@ final class SessionDetectionService {
         detector.settings = .forSensitivity(s)
     }
 
-    /// 設定 > 自動検出 のオンオフ。オンにしたら「常に許可」を求めて監視を始め、オフにしたら監視を止める
+    /// 設定 > 自動検出 のオンオフ。オンにしたら「常に許可」を求めて釣り場の境界を置き、オフにしたら境界を外す
     func applyAutoDetection(_ enabled: Bool) {
         Self.autoDetectionEnabled = enabled
         location.wantsAlwaysAuthorization = enabled
@@ -66,14 +81,136 @@ final class SessionDetectionService {
             location.requestAuthorization()
             if activeSessionID == nil { location.startMonitoring() }
         } else {
-            detector.reset()
-            if activeSessionID == nil { location.stopTracking(monitor: false) }
+            endCandidate()
+            if activeSessionID == nil {
+                detector.reset()
+                location.stopTracking(monitor: false)
+            }
         }
+        refreshGeofences()
+    }
+
+    // MARK: 自動で始める釣り場と境界
+
+    static let disabledSpotsKey = "fog.detection.disabledSpots"
+    private static let suppressedKey = "fog.detection.suppressed"
+
+    /// 自動で始めない釣り場（設定 > 自動検出 で外した、または「誤検出なので破棄」した）
+    static var disabledSpotIDs: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: disabledSpotsKey) ?? []) }
+        set { UserDefaults.standard.set(Array(newValue), forKey: disabledSpotsKey) }
+    }
+
+    static func isArmed(spotID: UUID) -> Bool { !disabledSpotIDs.contains(spotID.uuidString) }
+
+    func setArmed(_ armed: Bool, spotID: UUID) {
+        var ids = Self.disabledSpotIDs
+        if armed { ids.remove(spotID.uuidString) } else { ids.insert(spotID.uuidString) }
+        Self.disabledSpotIDs = ids
+        refreshGeofences()
+    }
+
+    /// 自動で始める候補になる釣り場：登録済みで位置があり、外していないもの
+    func registeredSpots() -> [Spot] {
+        ((try? store.spots()) ?? []).filter { $0.isRegistered && $0.coordinate.isPlausible }
+    }
+
+    private func armedSpots() -> [Spot] { registeredSpots().filter { Self.isArmed(spotID: $0.id) } }
+
+    /// 境界を置き直す：自動検出オンなら、近い順に 19 個までの釣り場と、記録中なら始めた場所。オフなら全部外す。
+    /// 釣り場が増えた・消えた・動いたあと、釣行の開始と終了のあと、前面に戻ったときに呼ぶ
+    func refreshGeofences() {
+        guard Self.autoDetectionEnabled else { location.setGeofences([]); return }
+        // 近さの基準：最後に分かっている位置 → 直近の釣行の釣り場
+        let spots = armedSpots()
+        var near = location.lastFix?.coordinate
+        if near == nil, let last = (try? store.sessions())?.first {
+            near = spots.first { $0.id == last.spotID }?.coordinate
+        }
+        var regions = GeofencePlanner.regions(spots: spots.map { (id: $0.id, coordinate: $0.coordinate) }, near: near, radiusM: Self.registeredSpotRadiusM)
+        if activeSessionID != nil, let anchor = detector.activeAnchor, anchor.isPlausible {
+            regions.append(GeofencePlanner.Region(id: GeofencePlanner.sessionID, center: anchor, radiusM: max(detector.settings.awayDistanceM, 150)))
+        }
+        location.setGeofences(regions)
+    }
+
+    /// 境界の出入り（`LocationService.onRegionEvent`）。アプリが OS に起こされた直後にも呼ばれる
+    func regionEvent(identifier: String, inside: Bool) {
+        start()
+        guard Self.autoDetectionEnabled else { return }
+        Perf.mark("境界：\(identifier == GeofencePlanner.sessionID ? "釣行" : "釣り場") \(inside ? "入った" : "出た")")
+        if identifier == GeofencePlanner.sessionID {
+            // 記録中に始めた場所から離れた：位置の更新を起こして、離れた時刻で終える判定を動かす
+            if !inside, activeSessionID != nil { location.nudge(); scheduleAwayCheck() }
+            return
+        }
+        guard let spotID = GeofencePlanner.spotID(from: identifier) else { return }
+        if inside {
+            guard activeSessionID == nil, Self.isArmed(spotID: spotID) else { return }
+            beginCandidate()
+        } else if activeSessionID == nil {
+            // 通り過ぎた、または手動で終えてから立ち去った：数えかけの滞在と「開始を止めている」状態を戻す
+            detector.leftPlace()
+            Self.clearSuppressed()
+            endCandidate()
+        } else {
+            location.nudge()
+        }
+    }
+
+    /// 釣り場の境界に入った：滞在を確かめる間だけ位置を取る。確かめられなければ（滞在時間 + 3 分で）待機へ戻る
+    private func beginCandidate() {
+        guard activeSessionID == nil, candidateTask == nil else { return }
+        location.startCandidate()
+        lastCandidateFixAt = nil
+        let limit = detector.settings.dwellToStart + 180
+        candidateTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(limit * 1_000_000_000))
+            guard let self, !Task.isCancelled else { return }
+            self.candidateTask = nil
+            guard self.activeSessionID == nil else { return }
+            self.detector.leftPlace()
+            self.location.stopCandidate()
+        }
+    }
+
+    private func endCandidate() {
+        candidateTask?.cancel()
+        candidateTask = nil
+        location.stopCandidate()
+    }
+
+    /// 釣行の境界を出たあと、離れたまま位置が届かないとき（立ち止まっている・更新が止まった）の保険：
+    /// 終了までの時間がたったら、もう一度位置を取り直して判定させる
+    private func scheduleAwayCheck() {
+        awayCheckTask?.cancel()
+        let wait = detector.settings.awayToEnd + 60
+        awayCheckTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+            guard let self, !Task.isCancelled, self.activeSessionID != nil else { return }
+            self.location.nudge()
+        }
+    }
+
+    // 手動で終えたあとの「開始を止めている」状態は、アプリが終了しても 6 時間は覚えておく
+    // （その場に居るうちに OS に起こし直されて、また始まってしまうのを防ぐ）
+    private static func saveSuppressed(_ anchor: Coordinate) {
+        UserDefaults.standard.set([anchor.latitude, anchor.longitude, Date.now.timeIntervalSince1970], forKey: suppressedKey)
+    }
+    private static func clearSuppressed() { UserDefaults.standard.removeObject(forKey: suppressedKey) }
+    private static func loadSuppressed(now: Date = .now) -> Coordinate? {
+        guard let v = UserDefaults.standard.array(forKey: suppressedKey) as? [Double], v.count == 3,
+              now.timeIntervalSince1970 - v[2] < 6 * 3600 else { return nil }
+        return Coordinate(latitude: v[0], longitude: v[1])
     }
 
     // MARK: 起動
 
+    /// 何度呼んでもよい（画面からの起動と、境界の知らせで OS に起こされたときの両方から呼ばれる）
     func start() {
+        guard !started else { return }
+        started = true
+        if let anchor = Self.loadSuppressed() { detector.endManually(anchor: anchor) }
         SessionNotifications.registerCategories()
         location.wantsAlwaysAuthorization = Self.autoDetectionEnabled
         location.requestAuthorization()
@@ -84,6 +221,7 @@ final class SessionDetectionService {
         } else if Self.autoDetectionEnabled {
             location.startMonitoring()
         }
+        refreshGeofences()
         task?.cancel()
         task = Task { [weak self] in
             guard let self else { return }
@@ -107,6 +245,10 @@ final class SessionDetectionService {
     private func resumeTracking(session: Core.Session) {
         activeSessionID = session.id
         activeSpotName = (try? store.spot(id: session.spotID))?.name
+        // 判定の状態は覚えていないので、記録中に戻す（これが無いと、起こし直されたあと「離れたら終了」が働かない）
+        if !detector.isActive, let anchor = session.track.first?.coordinate ?? (try? store.spot(id: session.spotID))?.coordinate, anchor.isPlausible {
+            detector.beginManually(at: session.startedAt, anchor: anchor)
+        }
         location.startTracking()
         if let coordinate = session.track.last?.coordinate ?? (try? store.spot(id: session.spotID))?.coordinate {
             scheduler.start(session: session, coordinate: coordinate)
@@ -128,6 +270,14 @@ final class SessionDetectionService {
             }
             return
         }
+        // 滞在の確認中は GPS が毎秒届く。10 秒に 1 回だけ見る
+        if location.mode == .candidate {
+            if let last = lastCandidateFixAt, fix.at.timeIntervalSince(last) < 10 { return }
+            lastCandidateFixAt = fix.at
+        }
+        // 位置が 10 分以上途切れたあとは、数えかけの滞在を捨てる（古い開始時刻のまま「着いた瞬間に開始」しないように）
+        if let last = lastHandledAt, fix.at.timeIntervalSince(last) > 600, detector.isCandidate { detector.leftPlace() }
+        lastHandledAt = fix.at
         let context = await context(for: fix)
         let events = detector.handle(fix, context: context)
         for event in events {
@@ -151,19 +301,15 @@ final class SessionDetectionService {
     static let trackAccuracyM = 35.0
     static let snapshotAccuracyM = 65.0
 
+    /// 始めてよい場所か：自動で始める釣り場（登録済みで、外していないもの）の 300 m 以内だけ。
+    /// 以前は、登録していない場所でも海のそばなら始めていた（逆ジオコーディングで判定）。自宅や店で始まる原因だったのでやめた（2026-11-19）
     private func context(for fix: LocationFix) async -> SessionDetector.Context {
-        let spots = (try? store.spots()) ?? []
-        let registered = spots.filter(\.isRegistered)
+        let registered = armedSpots()
             .min { Geo.distanceMeters($0.coordinate, fix.coordinate) < Geo.distanceMeters($1.coordinate, fix.coordinate) }
         if let registered, Geo.distanceMeters(registered.coordinate, fix.coordinate) <= Self.registeredSpotRadiusM {
             return .init(registeredSpotID: registered.id, nearShore: true)
         }
-        // 「誤検出なので破棄」した場所（自宅など）では始めない
-        if Self.isExcluded(fix.coordinate) { return .init(registeredSpotID: nil, nearShore: false) }
-        // 走行中は逆ジオコーディングしない（無駄な通信を避ける）
-        if (fix.speedMS ?? 0) >= detector.settings.drivingSpeedMS { return .init(registeredSpotID: nil, nearShore: nil) }
-        let info = await shore.info(for: fix.coordinate)
-        return .init(registeredSpotID: nil, nearShore: info?.nearShore)
+        return .init(registeredSpotID: nil, nearShore: false)
     }
 
     // MARK: 開始・再開・終了
@@ -190,7 +336,11 @@ final class SessionDetectionService {
         activeSessionID = session.id
         activeSpotName = spot.name
         WidgetSync.setRecording(true)
+        candidateTask?.cancel()
+        candidateTask = nil
+        Self.clearSuppressed()
         location.startTracking()
+        refreshGeofences()
         scheduler.start(session: session, coordinate: anchor)
         // 開始の通知は自動検出のときだけ（自分で押したときに「始めました」と言われても意味がない）
         if !manual { SessionNotifications.sessionStarted(spotName: spot.name, sessionID: session.id) }
@@ -207,7 +357,10 @@ final class SessionDetectionService {
         session.track.append(TrackSample(at: at, coordinate: anchor))
         try? store.upsert(session)
         activeSessionID = session.id
+        candidateTask?.cancel()
+        candidateTask = nil
         location.startTracking()
+        refreshGeofences()
         WidgetSync.setRecording(true)
         scheduler.start(session: session, coordinate: anchor)
         SafetyNotifier.schedule(at: at, coordinate: anchor, environment: environment)
@@ -227,6 +380,10 @@ final class SessionDetectionService {
         location.stopTracking(monitor: Self.autoDetectionEnabled)
         lastEndedSessionID = id
         activeSessionID = nil
+        awayCheckTask?.cancel()
+        awayCheckTask = nil
+        // 釣行の境界を外す。この釣行で釣り場が増えていれば、その境界を置く
+        refreshGeofences()
         WidgetSync.setRecording(false)
         let spotName = (try? store.spot(id: session.spotID))?.name ?? "釣り場"
         SessionNotifications.sessionEnded(spotName: spotName, catches: session.catches.count, summary: session.report?.summary, sessionID: id)
@@ -319,7 +476,10 @@ final class SessionDetectionService {
         activeSessionID = session.id
         activeSpotName = (try? store.spot(id: session.spotID))?.name
         WidgetSync.setRecording(true)
+        candidateTask?.cancel()
+        candidateTask = nil
         location.startTracking()
+        refreshGeofences()
         scheduler.start(session: session, coordinate: coordinate)
         SafetyNotifier.schedule(at: session.startedAt, coordinate: coordinate, environment: environment)
     }
@@ -329,6 +489,7 @@ final class SessionDetectionService {
         let anchor = scheduler.currentCoordinate ?? location.lastFix?.coordinate
         await endSession(at: .now)
         detector.endManually(anchor: anchor)
+        if let anchor { Self.saveSuppressed(anchor) }
     }
 
     // MARK: 通知からの操作
@@ -364,6 +525,14 @@ final class SessionDetectionService {
     func discard(sessionID: UUID) {
         if let session = try? store.session(id: sessionID), session.isAutoDetected {
             Self.exclude(session: session, spot: try? store.spot(id: session.spotID))
+            // 「誤検出」と言われた場所に、釣果の記録が 1 つも無ければ、以後は自動で始めない（設定 > 自動検出 で戻せる）。
+            // 釣果のある釣り場は、たまたまの誤検出 1 回で止めない
+            let proven = ((try? store.sessions(spotID: session.spotID)) ?? []).contains { $0.id != sessionID && !$0.catches.isEmpty }
+            if !proven {
+                var ids = Self.disabledSpotIDs
+                ids.insert(session.spotID.uuidString)
+                Self.disabledSpotIDs = ids
+            }
         }
         if activeSessionID == sessionID {
             scheduler.stop()
@@ -374,6 +543,7 @@ final class SessionDetectionService {
             WidgetSync.setRecording(false)
         }
         try? store.deleteSession(id: sessionID)
+        refreshGeofences()
     }
 
     /// 現在の立ち位置に対応するポイント ID（撮影時の紐付けに使う）。
