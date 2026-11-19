@@ -2,6 +2,7 @@ import SwiftUI
 import ImageIO
 import UniformTypeIdentifiers
 import Core
+import CoreLocation
 
 /// 設定（§8、ホーム右上の歯車）。6 項目の入口を 1 画面に収め、各項目は 1 画面の子ページで完結する。
 struct SettingsView: View {
@@ -661,7 +662,7 @@ struct DetectionSettingsView: View {
                     Toggle(isOn: $autoEnabled) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("位置情報で自動開始・終了").font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
-                            Text(autoEnabled ? "常に位置を監視します（電池を使います）" : "オフ：釣行はホームの「開始」「終了」か撮影で記録します。位置は記録中と地図・撮影を開いている間だけ使います")
+                            Text(autoEnabled ? "登録した釣り場に着いて少したつと始め、離れると終えます。釣り場の外ではアプリは位置を取りません（見張りは iOS に任せます）" : "オフ：釣行はホームの「開始」「終了」か撮影で記録します。位置は記録中と地図・撮影を開いている間だけ使います")
                                 .font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
                         }
                     }
@@ -673,6 +674,41 @@ struct DetectionSettingsView: View {
                 } header: { SectionLabel(text: "釣行の記録") }
 
                 if autoEnabled {
+                    if services.location.authorization != .authorizedAlways {
+                        Section {
+                            VStack(alignment: .leading, spacing: DS.Spacing.s) {
+                                Text("位置情報が「常に許可」になっていません").font(DS.Font.label).foregroundStyle(DS.Color.holiday)
+                                Text("アプリを閉じている間に釣り場へ着いたことを知るには「常に」が必要です。iOS の設定 > Fog > 位置情報 で「常に」を選んでください。「使用中のみ」のままだと、アプリを開いているときしか始まりません")
+                                    .font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
+                                Button("iOS の設定を開く") {
+                                    if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                                }
+                                .font(DS.Font.caption).foregroundStyle(DS.Color.accent).buttonStyle(.borderless)
+                            }
+                            .settingsRow()
+                        } header: { SectionLabel(text: "位置情報の許可") }
+                    }
+                    Section {
+                        if spots.isEmpty {
+                            Text("まだ釣り場がありません。最初の 1 回は、釣り場でホームの「開始」を押すか魚を撮ってください。その場所が釣り場として登録され、次からは自動で始まります")
+                                .font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary).settingsRow()
+                        }
+                        ForEach(spots, id: \.id) { spot in
+                            Toggle(isOn: Binding(
+                                get: { !disabled.contains(spot.id.uuidString) },
+                                set: { on in
+                                    services.detection.setArmed(on, spotID: spot.id)
+                                    disabled = SessionDetectionService.disabledSpotIDs
+                                }
+                            )) {
+                                Text(spot.name).font(DS.Font.label).foregroundStyle(DS.Color.textPrimary).lineLimit(1)
+                            }
+                            .tint(DS.Color.accent)
+                            .settingsRow()
+                        }
+                        Text("自動で始めるのは、ここでオンにした釣り場の 300 m 以内だけです。初めての場所は、ホームの「開始」か撮影で始めると釣り場として登録されます。自宅など釣り場でない場所が入っていたらオフにしてください" + (spots.count > GeofencePlanner.maxSpotRegions ? "。見張れるのは近い順に \(GeofencePlanner.maxSpotRegions) か所までです（iOS の上限）" : ""))
+                            .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary).settingsRow()
+                    } header: { SectionLabel(text: "自動で始める釣り場") }
                     Section {
                         Picker("感度", selection: $sensitivity) {
                             ForEach(DetectionSettings.Sensitivity.allCases, id: \.self) { Text($0.label).tag($0) }
@@ -682,29 +718,23 @@ struct DetectionSettingsView: View {
                         .onChange(of: sensitivity) { _, s in services.detection.applySensitivity(s) }
 
                         let s = DetectionSettings.forSensitivity(sensitivity)
-                        detailRow("開始", "同じ場所に \(Int(s.dwellToStart / 60)) 分とどまる")
+                        detailRow("開始", "釣り場に \(Int(s.dwellToStart / 60)) 分とどまる（始まりの時刻は着いた時刻）")
                         detailRow("終了", "\(Int(s.awayDistanceM)) m 離れて \(Int(s.awayToEnd / 60)) 分、または車で \(Int(s.drivingToEnd / 60)) 分")
                         detailRow("ランガン", "\(Int(s.runAndGunMaxGap / 60)) 分・\(Int(s.runAndGunMaxDistanceM / 1000)) km 以内は同じ釣行")
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("除外した場所").font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
-                                Text("破棄・削除した釣行の場所から 400 m 以内では自動で始めない：\(excludedCount) 件").font(DS.Font.caption).foregroundStyle(DS.Color.textSecondary)
-                            }
-                            Spacer()
-                            if excludedCount > 0 {
-                                Button("消去") { SessionDetectionService.clearExclusions(); excludedCount = 0 }.font(DS.Font.caption).foregroundStyle(DS.Color.accent)
-                            }
-                        }
-                        .settingsRow()
                     } header: { SectionLabel(text: "自動検出の感度") }
                 }
             }
             .listStyle(.plain)
         }
-        .onAppear { excludedCount = SessionDetectionService.excludedMeshes.count }
+        .onAppear {
+            spots = services.detection.registeredSpots().sorted { $0.name < $1.name }
+            disabled = SessionDetectionService.disabledSpotIDs
+        }
     }
 
-    @State private var excludedCount = 0
+    /// 自動で始める候補の釣り場と、外しているもの
+    @State private var spots: [Spot] = []
+    @State private var disabled: Set<String> = []
 
     private func detailRow(_ title: String, _ text: String) -> some View {
         HStack(alignment: .firstTextBaseline) {

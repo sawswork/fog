@@ -42,6 +42,10 @@ final class AppServices {
         self.scheduler = scheduler
         let detection = SessionDetectionService(location: location, store: store, scheduler: scheduler, environment: environment)
         self.detection = detection
+        // 釣り場の境界の出入り（自動開始・終了）。アプリが OS に起こされた直後（画面なし）にも届くので、ここでつなぐ
+        location.onRegionEvent = { [weak detection] identifier, inside in
+            detection?.regionEvent(identifier: identifier, inside: inside)
+        }
         let capture = CaptureService(store: store, environment: environment, detection: detection)
         self.capture = capture
         self.photoImport = PhotoImportService(store: store, capture: capture)
@@ -101,6 +105,8 @@ final class AppServices {
     func didBecomeActive() async {
         drainPendingHookEvents()
         detection.endStaleSessionIfNeeded()
+        // 釣り場が増えた・動いたあとの境界を置き直す（自動検出オンのときだけ働く）
+        detection.refreshGeofences()
         if let active = try? store.activeSession() {
             await photoImport.importPhotos(for: active.id)
         }

@@ -144,4 +144,84 @@ final class SessionDetectionTests: XCTestCase {
         }
         XCTAssertEqual(events.filter { if case .start = $0 { return true }; return false }.count, 1)
     }
+
+    // MARK: 登録した釣り場の境界で見張る方式（2026-11-19）
+
+    /// 見張る釣り場は近い順に 19 個まで。位置が無効な釣り場と重複は除く
+    func testGeofencePlannerPicksNearestSpots() {
+        let ids = (0..<25).map { _ in UUID() }
+        var spots: [(id: UUID, coordinate: Coordinate)] = ids.enumerated().map { i, id in
+            (id: id, coordinate: Coordinate(latitude: port.latitude + Double(i) * 0.01, longitude: port.longitude))
+        }
+        spots.append((id: UUID(), coordinate: Coordinate(latitude: 0, longitude: 0)))   // 位置不明
+        spots.append((id: ids[0], coordinate: port))                                   // 重複
+        let regions = GeofencePlanner.regions(spots: Array(spots.reversed()), near: port, radiusM: 300)
+        XCTAssertEqual(regions.count, 19)
+        XCTAssertEqual(regions.first?.id, GeofencePlanner.spotPrefix + ids[0].uuidString)
+        XCTAssertEqual(regions.map(\.id), ids.prefix(19).map { GeofencePlanner.spotPrefix + $0.uuidString })
+        XCTAssertEqual(regions[3].radiusM, 300)
+        XCTAssertEqual(GeofencePlanner.spotID(from: regions[2].id), ids[2])
+        XCTAssertNil(GeofencePlanner.spotID(from: GeofencePlanner.sessionID))
+        // 位置が分からなければ渡された順
+        let unordered = GeofencePlanner.regions(spots: Array(spots.prefix(3).reversed()), near: nil, radiusM: 300)
+        XCTAssertEqual(unordered.map(\.id), [ids[2], ids[1], ids[0]].map { GeofencePlanner.spotPrefix + $0.uuidString })
+        XCTAssertTrue(GeofencePlanner.regions(spots: spots, near: port, radiusM: 300, limit: 0).isEmpty)
+    }
+
+    /// 置いてある境界との差だけを足し引きする（同じものは置き直さない）
+    func testGeofenceDiff() {
+        let a = GeofencePlanner.Region(id: "fog.spot.a", center: port, radiusM: 300)
+        let b = GeofencePlanner.Region(id: "fog.spot.b", center: Coordinate(latitude: port.latitude + 0.05, longitude: port.longitude), radiusM: 300)
+        let session = GeofencePlanner.Region(id: GeofencePlanner.sessionID, center: port, radiusM: 300)
+        let none = GeofencePlanner.diff(current: [a, b], wanted: [b, a])
+        XCTAssertTrue(none.add.isEmpty); XCTAssertTrue(none.remove.isEmpty)
+        let started = GeofencePlanner.diff(current: [a, b], wanted: [a, b, session])
+        XCTAssertEqual(started.add, [session]); XCTAssertTrue(started.remove.isEmpty)
+        // 中心が動いた境界は置き直す。要らなくなった境界は外す
+        var moved = session
+        moved.center = Coordinate(latitude: port.latitude + 0.001, longitude: port.longitude)
+        let d = GeofencePlanner.diff(current: [a, b, session], wanted: [a, moved])
+        XCTAssertEqual(d.add, [moved])
+        XCTAssertEqual(Set(d.remove), ["fog.spot.b", GeofencePlanner.sessionID])
+        XCTAssertEqual(GeofencePlanner.diff(current: [a], wanted: []).remove, ["fog.spot.a"])
+    }
+
+    /// 境界を出たら、手動終了後の「開始を止めている」状態と、数えかけの滞在を待機に戻す
+    func testLeftPlaceClearsSuppressedAndCandidate() {
+        var detector = SessionDetector(settings: .default)
+        let t0 = Date(timeIntervalSince1970: 1_792_267_200)
+        let here = SessionDetector.Context(registeredSpotID: UUID(), nearShore: true)
+        func fix(_ minutes: Double) -> LocationFix { LocationFix(at: t0.addingTimeInterval(minutes * 60), coordinate: port, horizontalAccuracyM: 15, speedMS: 0) }
+
+        // 手動で終えたあと、位置が届かないまま翌日に同じ場所へ：境界を出た知らせで戻っていれば、滞在で始まる
+        detector.beginManually(at: t0, anchor: port)
+        detector.endManually(anchor: port)
+        XCTAssertTrue(detector.isSuppressed)
+        detector.leftPlace()
+        XCTAssertFalse(detector.isSuppressed)
+        var events: [SessionDetector.Event] = []
+        for m in stride(from: 1440.0, through: 1455.0, by: 1.0) { events += detector.handle(fix(m), context: here) }
+        XCTAssertEqual(events.filter { if case .start = $0 { return true }; return false }.count, 1)
+        XCTAssertEqual(detector.activeAnchor, port)
+
+        // 数えかけの滞在（3 分で通り過ぎた）を残さない：残っていると、次に来た瞬間に古い開始時刻で始まってしまう
+        var second = SessionDetector(settings: .default)
+        _ = second.handle(fix(0), context: here)
+        _ = second.handle(fix(3), context: here)
+        XCTAssertTrue(second.isCandidate)
+        second.leftPlace()
+        XCTAssertFalse(second.isCandidate)
+        let next = second.handle(fix(600), context: here)
+        XCTAssertTrue(next.isEmpty, "着いた瞬間には始まらない")
+        var later: [SessionDetector.Event] = []
+        for m in stride(from: 601.0, through: 611.0, by: 1.0) { later += second.handle(fix(m), context: here) }
+        guard case .start(let at, _, _)? = later.first else { return XCTFail("滞在で始まる") }
+        XCTAssertEqual(at, t0.addingTimeInterval(600 * 60))
+
+        // 記録中は変えない
+        var active = SessionDetector(settings: .default)
+        active.beginManually(at: t0, anchor: port)
+        active.leftPlace()
+        XCTAssertTrue(active.isActive)
+    }
 }

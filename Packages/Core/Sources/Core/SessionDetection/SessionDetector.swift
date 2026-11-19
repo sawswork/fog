@@ -173,6 +173,35 @@ public struct SessionDetector: Sendable {
         }
     }
 
+    /// その場所を離れた（釣り場の境界を出た、または位置が長く途切れた）。
+    /// 手動で終えたあとの「開始を止めている」状態と、滞在を数えている途中の候補を、待機に戻す。記録中・ランガン待ちは変えない。
+    /// 候補を残したままだと、次に同じ場所へ来たときに古い開始時刻で滞在時間が一気に満たされて、着いた瞬間に始まってしまう
+    public mutating func leftPlace() {
+        switch state {
+        case .suppressed, .candidate:
+            state = .idle
+            pendingResume = nil
+        default:
+            break
+        }
+    }
+
+    public var isCandidate: Bool {
+        if case .candidate = state { return true }
+        return false
+    }
+
+    public var isSuppressed: Bool {
+        if case .suppressed = state { return true }
+        return false
+    }
+
+    /// 記録中の釣行の中心（始めた場所）
+    public var activeAnchor: Coordinate? {
+        if case .active(let a) = state { return a.anchor }
+        return nil
+    }
+
     /// 通知からの「停止」や誤検出の破棄。
     public mutating func reset() {
         state = .idle
