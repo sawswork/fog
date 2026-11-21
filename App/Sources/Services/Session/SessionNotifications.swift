@@ -102,6 +102,22 @@ enum SessionNotifications {
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: SafetyPlanner.Kind.allCases.map { "safety.\($0.rawValue)" })
     }
 
+    // MARK: 雨の前（F-69）
+
+    static let rainID = "rain.onset"
+
+    /// 雨（雪）が降り出す前に知らせる。すぐ知らせるか、降り出しの 30 分前に予約する。前の予約は同じ ID で置き換わる
+    static func rain(_ alert: RainPlanner.Alert, now: Date) {
+        guard NotificationSettings.isEnabled(.rain) else { return }
+        let wait = alert.fireAt.timeIntervalSince(now)
+        let trigger: UNNotificationTrigger? = wait > 5 ? UNTimeIntervalNotificationTrigger(timeInterval: wait, repeats: false) : nil
+        post(id: rainID, category: safetyCategory, title: alert.title, body: alert.body(), trigger: trigger, timeSensitive: true)
+    }
+
+    static func cancelRain() {
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [rainID])
+    }
+
     /// 根掛かり注意（F-39）：過去に針を失ったメッシュに入ったとき 1 回。ID 固定で連打しない
     static func snag(losses: Int, meshKey: String) {
         guard NotificationSettings.isEnabled(.snag) else { return }

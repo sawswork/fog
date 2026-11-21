@@ -52,3 +52,38 @@ struct WeatherKitProvider: WeatherProviding {
         return (a.serviceName, a.legalPageURL)
     }
 }
+
+/// 雨の前の通知（F-69）に使う降水の予報。WeatherKit の分単位の予報（約 1 時間先まで。出ない地域では空）と、1 時間ごとの予報（3 時間先まで）。
+/// 位置は 0.01° に丸めて送る。取れなければ nil
+enum RainForecastProvider {
+    static func fetch(at coordinate: Coordinate, now: Date = .now) async -> (minutes: [RainPlanner.Minute], hours: [RainPlanner.Hour])? {
+        let lat = (coordinate.latitude * 100).rounded() / 100
+        let lon = (coordinate.longitude * 100).rounded() / 100
+        let location = CLLocation(latitude: lat, longitude: lon)
+        do {
+            let (minute, hourly) = try await WeatherService.shared.weather(
+                for: location, including: .minute, .hourly(startDate: now.addingTimeInterval(-3600), endDate: now.addingTimeInterval(3 * 3600)))
+            let minutes: [RainPlanner.Minute] = (minute?.forecast ?? []).map { m in
+                // 強さは速さの単位（m/s）で来る。mm/h に直す
+                RainPlanner.Minute(at: m.date, chance: m.precipitationChance,
+                                   intensityMMH: m.precipitationIntensity.converted(to: .metersPerSecond).value * 3_600_000,
+                                   kind: kind(m.precipitation))
+            }
+            let hours: [RainPlanner.Hour] = hourly.forecast.map { h in
+                RainPlanner.Hour(at: h.date, chance: h.precipitationChance,
+                                 amountMM: h.precipitationAmount.converted(to: .millimeters).value, kind: kind(h.precipitation))
+            }
+            return (minutes, hours)
+        } catch {
+            return nil
+        }
+    }
+
+    private static func kind(_ p: Precipitation) -> RainPlanner.Kind {
+        switch p {
+        case .snow: return .snow
+        case .sleet, .mixed, .hail: return .sleet
+        default: return .rain
+        }
+    }
+}
