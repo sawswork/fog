@@ -109,7 +109,9 @@ final class SpotsViewModel {
             let stats = bySpot[spot.id] ?? Analytics.spotStats(sessions: [])
             let d = currentLocation.map { Geo.distanceMeters($0, spot.coordinate) }
             let mine = sessions.filter { $0.spotID == spot.id }
-            return Card(spot: spot, stats: stats, score: score, distanceM: d,
+            // 保存してあるが未登録の漁港（検索から開いたもの）は、候補として出す（「登録」ボタンが出る）。
+            // 以前は登録済みと同じ表示になり、登録ボタンが無いのにホームの「登録した釣り場」にも出なかった（2026-11-21 開発者の指摘）
+            return Card(spot: spot, stats: stats, score: score, distanceM: d, isCandidate: !spot.isRegistered && spot.coordinate.isPlausible,
                         catchPoints: mine.flatMap(\.catches).map(\.coordinate).filter(\.isPlausible),
                         lossPoints: mine.flatMap(\.hookEvents).filter { $0.kind == .lost }.map(\.coordinate).filter(\.isPlausible))
         }.sorted { ($0.distanceM ?? .infinity) < ($1.distanceM ?? .infinity) }
@@ -163,6 +165,8 @@ final class SpotsViewModel {
         for port in portCatalog.ports(latitude: latR, longitude: lonR, limit: 40) {
             let c = port.coordinate
             if existing.contains(where: { Geo.distanceMeters($0.coordinate, c) < 300 }) { continue }
+            // 同じ名前の港が近く（3 km 以内）に保存してあれば、そちらだけ出す（検索で開いた港は位置が少しずれていて、2 つ並んでいた）
+            if existing.contains(where: { $0.name == port.name && Geo.distanceMeters($0.coordinate, c) < 3000 }) { continue }
             let key = "\(port.name)@\(Int(c.latitude * 1000)),\(Int(c.longitude * 1000))"
             let id = candidateIDs[key] ?? UUID()
             candidateIDs[key] = id
@@ -431,5 +435,11 @@ final class SpotsViewModel {
         guard let services else { return }
         try? services.store.deleteSpot(id: spot.id)
         refresh()
+    }
+
+    /// 保存してある漁港か（検索から開いた未登録の漁港は保存してある。地図の候補は保存していない）
+    func isStored(_ spot: Spot) -> Bool {
+        guard let services else { return false }
+        return (try? services.store.spot(id: spot.id)) != nil
     }
 }
