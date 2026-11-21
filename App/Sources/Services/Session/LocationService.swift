@@ -25,6 +25,11 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
     private var probeTask: Task<Void, Never>?
     /// 自動検出（位置での開始・終了）をオンにしたときだけ「常に許可」を求める
     var wantsAlwaysAuthorization = false
+    /// 記録中、じっとしていても位置の更新を止めさせない（アプリを動かし続ける）。
+    /// 音声の知らせ（F-70）がオンのとき true：更新が止まるとアプリも止まり、30 分ごとの読み上げができなくなる
+    @ObservationIgnored var keepsRunningWhileTracking = false {
+        didSet { if mode == .tracking { manager.pausesLocationUpdatesAutomatically = !keepsRunningWhileTracking; if keepsRunningWhileTracking { manager.startUpdatingLocation() } } }
+    }
     /// 境界の出入り（識別子、中に居るか）。アプリが終了していても OS が起こして届ける
     var onRegionEvent: (@MainActor (String, Bool) -> Void)?
 
@@ -125,7 +130,7 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
         manager.stopMonitoringSignificantLocationChanges()
         manager.desiredAccuracy = foregroundUsers > 0 ? kCLLocationAccuracyBest : kCLLocationAccuracyHundredMeters
         manager.distanceFilter = foregroundUsers > 0 ? 5 : 50
-        manager.pausesLocationUpdatesAutomatically = true
+        manager.pausesLocationUpdatesAutomatically = !keepsRunningWhileTracking
         // 「使用中のみ」の許可でも、前面で始めた更新は背景で続けられる（青い帯が出る）。常に許可なら帯は出ない
         manager.allowsBackgroundLocationUpdates = authorization == .authorizedAlways || authorization == .authorizedWhenInUse
         manager.startUpdatingLocation()

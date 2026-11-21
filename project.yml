@@ -70,7 +70,7 @@ targets:
         NSMotionUsageDescription: 釣行中の移動量を記録します。
         NSMicrophoneUsageDescription: 声でロストやリグを記録したり、相談したり、店先で聞いた話を地図のメモにします。録音は保存しません。
         NSSpeechRecognitionUsageDescription: 声を端末内で文字にして、記録・相談・メモに使います。
-        UIBackgroundModes: [location, fetch, processing, remote-notification]
+        UIBackgroundModes: [location, fetch, processing, remote-notification, audio]
         CFBundleURLTypes:
           - CFBundleURLName: ${BUNDLE_ID_PREFIX}.fog
             CFBundleURLSchemes: [fog]

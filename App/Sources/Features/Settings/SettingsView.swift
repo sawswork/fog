@@ -497,6 +497,8 @@ private struct ShareSheet: UIViewControllerRepresentable {
 // MARK: - 通知
 
 struct NotificationSettingsView: View {
+    @Environment(AppServices.self) private var services
+    @State private var voiceOn = SessionAnnouncer.isEnabled
     @State private var enabled: [NotificationSettings.Kind: Bool] = [:]
     @State private var weekendOnly = NotificationSettings.briefWeekendOnly
     @State private var registeredOnly = NotificationSettings.briefRegisteredOnly
@@ -521,6 +523,22 @@ struct NotificationSettingsView: View {
                         .settingsRow()
                     }
                 }
+                Section {
+                    Toggle(isOn: $voiceOn) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("釣行中、30 分ごとに声で知らせる").font(DS.Font.label).foregroundStyle(DS.Color.textPrimary)
+                            Text("0 分と 30 分ちょうどに、釣り場の時刻・釣れ率・潮・30 分後の天気を読み上げます。画面を消していても、消音にしていても、通話中でも読みます（音量はメディアの音量）。オンの間は、記録中にアプリを止めないので電池を少し多く使います")
+                                .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+                        }
+                    }
+                    .tint(DS.Color.accent).settingsRow()
+                    .onChange(of: voiceOn) { _, on in
+                        SessionAnnouncer.isEnabled = on
+                        services.location.keepsRunningWhileTracking = on
+                    }
+                    Button("試しに読み上げる") { Task { await services.announcer.announce(force: true) } }
+                        .font(DS.Font.label).foregroundStyle(DS.Color.accent).buttonStyle(.borderless).settingsRow()
+                } header: { SectionLabel(text: "声の知らせ") }
                 Section {
                     Toggle(isOn: $weekendOnly) { Text("週末（土日祝）の前夜だけ").font(DS.Font.label).foregroundStyle(DS.Color.textPrimary) }
                         .tint(DS.Color.accent).settingsRow()
