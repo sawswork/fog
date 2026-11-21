@@ -50,6 +50,14 @@ struct SpotDetailView: View {
                                 .padding(.horizontal, 10).padding(.vertical, 5).background(DS.Color.accent, in: Capsule())
                         }
                         .buttonStyle(.plain)
+                        // 検索から開いて保存してある未登録の漁港は、地図から消せる
+                        if services.spotsModel.isStored(card.spot) {
+                            Menu {
+                                Button("地図から消す", role: .destructive) { services.spotsModel.delete(card.spot); dismiss() }
+                            } label: {
+                                Image(systemName: "ellipsis.circle.fill").font(.system(size: 22)).foregroundStyle(DS.Color.textPrimary)
+                            }
+                        }
                     } else {
                         Menu {
                             Button("名前を変える") { newName = card.spot.name; renaming = true }
