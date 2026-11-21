@@ -21,6 +21,8 @@ final class AppServices {
     let inventory = InventoryStore()
     let gridForecast = GridForecastService()
     let portWind = PortWindService()
+    /// 釣行中の音声の知らせ（F-70）
+    let announcer = SessionAnnouncer()
     /// 仲間との釣果共有（F-54）
     let party = PartyService()
     let router = Router()
@@ -79,6 +81,41 @@ final class AppServices {
                 }
             }
         }
+        // 釣行中の音声の知らせ（F-70）：記録の開始で動き出し、終了で止まる。文はそのときの釣り場の状況から作る
+        let announcer = self.announcer
+        location.keepsRunningWhileTracking = SessionAnnouncer.isEnabled
+        scheduler.onStart = { announcer.start() }
+        scheduler.onStop = { announcer.stop() }
+        announcer.isListening = { SpeechRecorder.activeCount > 0 }
+        announcer.makeText = { [weak self] in await self?.voiceBriefing() }
+    }
+
+    /// 音声の知らせ（F-70）の文：記録中の釣り場（無ければホームの釣り場・登録した釣り場）の今の時刻・釣れ率・潮・30 分後の天気
+    func voiceBriefing(now: Date = .now) async -> String? {
+        let spots = (try? store.spots()) ?? []
+        let active = try? store.activeSession()
+        let spot: Spot? = active.flatMap { s in spots.first { $0.id == s.spotID } }
+            ?? UserDefaults.standard.string(forKey: "fog.homeSpotID").flatMap(UUID.init(uuidString:)).flatMap { id in spots.first { $0.id == id } }
+            ?? spots.first { $0.isRegistered && $0.coordinate.isPlausible }
+        let candidates: [Coordinate?] = [active != nil ? scheduler.currentCoordinate : nil, spot?.coordinate, location.lastFix?.coordinate]
+        guard let coordinate = candidates.compactMap({ $0 }).first(where: { $0.isPlausible }) else { return nil }
+        await environment.refreshIfNeeded(at: coordinate, now: now)
+        let current = environment.snapshot(at: now, coordinate: coordinate)
+        let laterMinutes = 30
+        let later = environment.weatherSnapshot(at: now.addingTimeInterval(Double(laterMinutes) * 60), coordinate: coordinate)
+        // 釣れ率は画面と同じ計算（自分の記録の傾向を入れる）
+        let ownSessions = (try? store.ownSessions()) ?? []
+        let personal = PersonalModel.learn(from: ownSessions.filter { !$0.isActive }, coordinateOf: { s in spots.first { $0.id == s.spotID }?.coordinate })
+        let engine = ScoreEngine(personal: personal.total.hours >= 1 ? personal : nil)
+        let score = engine.score(ScoreInput(at: now, coordinate: coordinate, env: current)).score
+        let input = VoiceBriefing.Input(
+            now: now, spotName: (active != nil ? detection.activeSpotName : nil) ?? spot?.name ?? "", score: score,
+            tideLevelCm: current.tideLevelCm, tideRateCmPerHour: current.tideRateCmPerHour, tideName: current.tideName,
+            nextHighTideAt: current.nextHighTideAt, nextLowTideAt: current.nextLowTideAt, laterMinutes: laterMinutes,
+            weatherLater: later.conditionCode == nil ? nil : HomeViewModel.weatherName(later.conditionCode, precipitation: later.precipitationMM),
+            precipitationChanceLater: later.precipitationChance, temperatureLaterC: later.airTemperatureC,
+            windLaterMS: later.windSpeedMS, windDirectionLaterDeg: later.windDirectionDeg)
+        return VoiceBriefing.text(input)
     }
 
     var hookRecorder: HookEventRecorder { HookEventRecorder(store: store, detection: detection, scheduler: scheduler, capture: capture, inventory: inventory) }

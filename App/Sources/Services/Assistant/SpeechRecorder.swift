@@ -9,6 +9,8 @@ final class SpeechRecorder {
     private(set) var transcript = ""
     private(set) var isRecording = false
     private(set) var error: String?
+    /// どこかで声の入力をしている最中か（その間は、釣行中の音声の知らせを読まない。F-70）
+    static private(set) var activeCount = 0
 
     private let engine = AVAudioEngine()
     private var recognizer: SFSpeechRecognizer? = SFSpeechRecognizer(locale: Locale(identifier: "ja-JP"))
@@ -47,6 +49,7 @@ final class SpeechRecorder {
             engine.prepare()
             try engine.start()
             isRecording = true
+            Self.activeCount += 1
             task = recognizer.recognitionTask(with: request) { [weak self] result, err in
                 Task { @MainActor in
                     guard let self else { return }
@@ -72,6 +75,7 @@ final class SpeechRecorder {
         task?.cancel()
         task = nil
         request = nil
+        if isRecording { Self.activeCount = max(0, Self.activeCount - 1) }
         isRecording = false
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
