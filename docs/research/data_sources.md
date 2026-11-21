@@ -59,6 +59,7 @@ Wikimedia は共有 IP への 429 が多いので、UA を名乗り、ホスト�
 ## 4. 気象 — WeatherKit
 
 - Apple 公式。端末から直接取得。現在値＋時間別予報（約10日先）＋日別予報。
+- 雨の前の通知（F-69、2026-11-21）: 分単位の降水予報（`WeatherQuery.minute`。約 1 時間先まで、降水確率・強さ・種類）を釣行中だけ 10 分ごとに取る。分単位の予報は出る地域が限られる（出ないときは nil）。日本で出るかは実機で確認する。出ないときは 1 時間ごとの予報（降水確率・降水量）で代える
 - 必要な設定（開発者の作業）: Apple Developer の App ID で WeatherKit capability を有効化し、Certificates, Identifiers & Profiles の Services で WeatherKit を有効にする。有効化から反映まで最大30分程度かかる。
 - 月間 50 万コールまで無料。本アプリの使用量（1時間に1回＋釣果時）なら問題ない。
 - 画面に Apple Weather の帰属表示（attribution）が必要。設定画面に置く。

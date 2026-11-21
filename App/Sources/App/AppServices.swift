@@ -108,6 +108,8 @@ final class AppServices {
         detection.endStaleSessionIfNeeded()
         // 釣り場が増えた・動いたあとの境界を置き直す（自動検出オンのときだけ働く）
         detection.refreshGeofences()
+        // 釣行中なら、雨の予報を見直す（F-69）
+        await scheduler.rain.check()
         if let active = try? store.activeSession() {
             await photoImport.importPhotos(for: active.id)
         }

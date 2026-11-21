@@ -17,6 +17,8 @@ final class SnapshotScheduler {
     private(set) var activeSessionID: UUID?
     private(set) var lastSnapshotAt: Date?
     var currentCoordinate: Coordinate?
+    /// 雨の前の通知（F-69）。釣行の記録中だけ動く
+    let rain = RainWatcher()
 
     init(environment: EnvironmentService, store: FogStore) {
         self.environment = environment
@@ -36,6 +38,7 @@ final class SnapshotScheduler {
             Task { @MainActor in self?.logPressure() }
         }
         Task { await record(reason: .sessionStart) }
+        rain.start { [weak self] in self?.currentCoordinate }
     }
 
     func stop() {
@@ -45,6 +48,7 @@ final class SnapshotScheduler {
         pressureTimer?.invalidate()
         pressureTimer = nil
         environment.barometer.stop()
+        rain.stop()
         activeSessionID = nil
     }
 
