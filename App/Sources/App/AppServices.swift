@@ -20,6 +20,7 @@ final class AppServices {
     let assistant = AssistantService()
     let inventory = InventoryStore()
     let gridForecast = GridForecastService()
+    let portWind = PortWindService()
     /// 仲間との釣果共有（F-54）
     let party = PartyService()
     let router = Router()
