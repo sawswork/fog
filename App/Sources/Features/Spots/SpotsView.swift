@@ -166,7 +166,14 @@ struct SpotsView: View {
             if let id, let c = model.allCards.first(where: { $0.spot.id == id }), c.spot.coordinate.isPlausible { withAnimation { camera = .region(region(for: c.spot.coordinate)) } }
         }
         .sheet(item: $detail) { SpotDetailView(card: $0) }
-        .sheet(isPresented: $showCompare) { SpotCompareSheet(model: model).presentationDetents([.large]) }
+        .sheet(isPresented: $showCompare) {
+            SpotCompareSheet(model: model, onPickPlace: { c in
+                // 風の弱い順の一覧で選んだ港へ地図を動かす
+                showCompare = false
+                withAnimation { camera = .region(MKCoordinateRegion(center: c.cl, latitudinalMeters: 3000, longitudinalMeters: 3000)) }
+            })
+            .presentationDetents([.large])
+        }
         .sheet(item: $feedPin) { FeedPinSheet(pin: $0).presentationDetents([.medium, .large]) }
         .onChange(of: services.feeds.revision) { _, _ in model.refreshFeedPins(enabled: feedPinsOn) }
         .sheet(isPresented: $showSearch) { SpotSearchSheet { item in
@@ -696,16 +703,46 @@ struct SpotMarker: View {
 }
 
 /// 釣り場の比較（F-30）：登録した釣り場を、選んだ日の最高釣れ率の順に並べる。日は矢印で送る（今日から 2 週間）。
-/// 行をタップするとホームの釣り場にする
+/// 行をタップするとホームの釣り場にする。
+/// 上の切替で「風の弱い順」（F-68）：近くの漁港を、選んだ時刻の風の弱い順に並べる
 struct SpotCompareSheet: View {
     let model: SpotsViewModel
+    /// 風の弱い順の一覧で港を選んだ（地図をそこへ動かす）
+    var onPickPlace: (Coordinate) -> Void = { _ in }
     @Environment(\.dismiss) private var dismiss
     @State private var dayOffset = 0
     @State private var rows: [SpotsViewModel.CompareRow] = []
     @State private var loading = false
+    @AppStorage("fog.compare.mode") private var modeRaw = Mode.score.rawValue
     private let tz = TimeZone(identifier: "Asia/Tokyo") ?? .current
 
+    enum Mode: String, CaseIterable { case score = "釣れ率の高い順", wind = "風の弱い順" }
+    private var mode: Mode { Mode(rawValue: modeRaw) ?? .score }
+
     var body: some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.m) {
+            Picker("", selection: $modeRaw) {
+                ForEach(Mode.allCases, id: \.rawValue) { Text($0.rawValue).tag($0.rawValue) }
+            }
+            .pickerStyle(.segmented)
+            if mode == .wind {
+                PortWindList(model: model, onPick: onPickPlace)
+            } else {
+                scoreList
+            }
+        }
+        .padding(DS.Spacing.l)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(ThemeBackground(name: .bgDetail))
+        .task(id: dayOffset) {
+            loading = true
+            rows = await model.compare(dayOffset: dayOffset)
+            loading = false
+        }
+    }
+
+    /// 登録した釣り場を、選んだ日の最高釣れ率の順に
+    private var scoreList: some View {
         VStack(alignment: .leading, spacing: DS.Spacing.m) {
             HStack {
                 Button { if dayOffset > 0 { dayOffset -= 1 } } label: { Image(systemName: "chevron.left").font(.system(size: 13, weight: .semibold)).foregroundStyle(dayOffset > 0 ? DS.Color.textSecondary : DS.Color.faded).frame(width: 28, height: 22) }.buttonStyle(.plain)
@@ -727,14 +764,6 @@ struct SpotCompareSheet: View {
             }
             Spacer()
             Text("タップでホームの釣り場にする · 予報の先は潮と光だけで計算").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
-        }
-        .padding(DS.Spacing.l)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(ThemeBackground(name: .bgDetail))
-        .task(id: dayOffset) {
-            loading = true
-            rows = await model.compare(dayOffset: dayOffset)
-            loading = false
         }
     }
 
@@ -759,6 +788,126 @@ struct SpotCompareSheet: View {
             }
             Spacer()
             Image(systemName: r.conditionCode.map { HomeViewModel.weatherSymbol($0) } ?? "minus").font(.system(size: 16)).foregroundStyle(DS.Color.textSecondary)
+        }
+        .padding(DS.Spacing.m)
+        .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous)).themeOutline(DS.Radius.chip)
+    }
+}
+
+/// 風の弱い順（F-68）：近く（80 km 以内）の漁港と登録した釣り場を、選んだ時刻の風速の弱い順に並べる。
+/// 時刻は矢印で 3 時間ずつ先へ送る（2 日先まで）。行をタップすると地図がその港へ動く。
+/// 港が多いので、この一覧は縦に送れる
+struct PortWindList: View {
+    let model: SpotsViewModel
+    let onPick: (Coordinate) -> Void
+    @Environment(AppServices.self) private var services
+    @State private var places: [PortWind.Place] = []
+    @State private var origin: Coordinate?
+    /// いまから何時間先か（3 時間刻み）
+    @State private var hourOffset = 0
+    @State private var opened = Date()
+    private let tz = TimeZone(identifier: "Asia/Tokyo") ?? .current
+    static let radiusM: Double = 80_000
+    static let maxHours = 45
+
+    /// 見ている時刻。先の時刻は正時に揃える
+    private var time: Date {
+        guard hourOffset > 0 else { return opened }
+        let hour = (opened.timeIntervalSince1970 / 3600).rounded(.down) * 3600
+        return Date(timeIntervalSince1970: hour + Double(hourOffset) * 3600)
+    }
+
+    private var timeLabel: String {
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
+        let c = cal.dateComponents([.month, .day, .hour], from: time)
+        return "\(c.month ?? 0)/\(c.day ?? 0) \(c.hour ?? 0)時"
+    }
+
+    var body: some View {
+        let rows = PortWind.rank(places: places, series: services.portWind.series, at: time, origin: origin)
+        VStack(alignment: .leading, spacing: DS.Spacing.m) {
+            HStack {
+                Button { if hourOffset > 0 { hourOffset -= 3 } } label: {
+                    Image(systemName: "chevron.left").font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(hourOffset > 0 ? DS.Color.textSecondary : DS.Color.faded).frame(width: 44, height: 32)
+                }
+                .buttonStyle(.plain)
+                Spacer()
+                HStack(spacing: 6) {
+                    Text(hourOffset == 0 ? "いま" : timeLabel).font(DS.Font.number(16)).foregroundStyle(DS.Color.textPrimary)
+                    if hourOffset > 0 { Text("\(hourOffset) 時間後").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary) }
+                }
+                Spacer()
+                Button { if hourOffset < Self.maxHours { hourOffset += 3 } } label: {
+                    Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(hourOffset < Self.maxHours ? DS.Color.textSecondary : DS.Color.faded).frame(width: 44, height: 32)
+                }
+                .buttonStyle(.plain)
+            }
+            if rows.isEmpty {
+                Text(emptyText).font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+            }
+            ScrollView(.vertical, showsIndicators: false) {
+                LazyVStack(spacing: DS.Spacing.s) {
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, r in
+                        Button { onPick(r.place.coordinate) } label: { row(r, rank: index + 1) }.buttonStyle(.plain)
+                    }
+                }
+            }
+            Text("近く 80 km の漁港と登録した釣り場（緑の名前）· タップで地図へ · 予報の風で、港の向きや地形による風裏は入っていません")
+                .font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+        }
+        .onAppear(perform: prepare)
+        .task(id: places.count) { await services.portWind.load(places: places) }
+    }
+
+    private var emptyText: String {
+        if places.isEmpty { return "近くに漁港が見つかりません" }
+        if services.portWind.loading { return "風の予報を取っています" }
+        if let e = services.portWind.lastError { return "風の予報を取れませんでした（\(e)）" }
+        return "この時刻の予報がありません"
+    }
+
+    /// 基準の位置：現在地 → ホームの釣り場 → 登録した釣り場のどれか → 函館
+    private func prepare() {
+        opened = Date()
+        let spots = ((try? services.store.spots()) ?? []).filter { $0.isRegistered && $0.coordinate.isPlausible }
+        let home = UserDefaults.standard.string(forKey: "fog.homeSpotID").flatMap(UUID.init(uuidString:)).flatMap { id in spots.first { $0.id == id } }
+        let base = model.currentLocation ?? home?.coordinate ?? spots.first?.coordinate ?? Coordinate(latitude: 41.77, longitude: 140.73)
+        origin = base
+        places = PortWind.places(spots: spots.map { (id: $0.id, name: $0.name, coordinate: $0.coordinate) },
+                                 ports: PortCatalog.bundled().ports, origin: base, radiusM: Self.radiusM)
+    }
+
+    private func row(_ r: PortWind.Row, rank: Int) -> some View {
+        let speed = r.wind.speedMS
+        return HStack(spacing: DS.Spacing.m) {
+            Text("\(rank)").font(DS.Font.number(12)).foregroundStyle(DS.Color.textTertiary).frame(width: 22, alignment: .trailing)
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(String(format: "%.1f", speed)).font(DS.Font.score(24))
+                    .foregroundStyle(speed < 3 ? DS.Color.accent : (speed >= 7 ? DS.Color.holiday : DS.Color.textPrimary))
+                Text("m/s").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+            }
+            .frame(width: 84, alignment: .trailing)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(r.place.name).font(DS.Font.label).foregroundStyle(r.place.isSpot ? DS.Color.accent : DS.Color.textPrimary).lineLimit(1)
+                HStack(spacing: DS.Spacing.s) {
+                    if let g = r.wind.gustMS { Text("瞬間 \(Int(g.rounded()))").font(DS.Font.number(12)).foregroundStyle(DS.Color.textSecondary) }
+                    if let d = r.distanceM {
+                        Text(d >= 1000 ? String(format: "%.0f km", d / 1000) : "\(Int(d)) m").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+            if let dir = r.wind.directionDeg {
+                VStack(spacing: 2) {
+                    // 矢印は風が吹いていく向き（上が北）
+                    Image(systemName: "location.north.fill").font(.system(size: 14)).foregroundStyle(DS.Color.sea).rotationEffect(.degrees(dir + 180))
+                    Text(CastPredictor.compassName(dir)).font(.system(size: 9)).foregroundStyle(DS.Color.textTertiary)
+                }
+                .frame(width: 40)
+                .accessibilityLabel("\(CastPredictor.compassName(dir))の風")
+            }
         }
         .padding(DS.Spacing.m)
         .background(DS.Color.panel, in: RoundedRectangle(cornerRadius: DS.Radius.chip, style: .continuous)).themeOutline(DS.Radius.chip)
