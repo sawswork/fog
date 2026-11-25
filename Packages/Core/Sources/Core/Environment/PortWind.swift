@@ -2,11 +2,11 @@ import Foundation
 
 /// 漁港を風の弱い順に並べる（F-68）。近くの港の風の予報をまとめて取り、選んだ時刻の風速で並べる。
 ///
-/// 近い港は同じ予報の升に入るので、港の位置を 0.05°（約 5 km）の格子に寄せて、升ごとに 1 回だけ聞く。
+/// 近い港は同じ予報の升に入るので、港の位置を 0.1°（約 10 km）の格子に寄せて、升ごとに 1 回だけ聞く。
 /// 予報は気象モデルの値で、港の向きや地形による風裏は入っていない（並びは「その一帯の風の強さ」の目安）。
 public enum PortWind {
     /// 予報を聞く升の刻み（度）
-    public static let cellDeg = 0.05
+    public static let cellDeg = 0.1
 
     /// 1 つの升の風の予報（1 時間刻み）
     public struct Series: Hashable, Sendable, Codable {
@@ -71,7 +71,7 @@ public enum PortWind {
         public var id: String { place.id }
     }
 
-    /// 升の鍵（「41.80,140.65」）と、その中心
+    /// 升の鍵（「41.80,140.70」）と、その中心
     public static func cellKey(for c: Coordinate) -> String {
         let p = cellCenter(for: c)
         return String(format: "%.2f,%.2f", p.latitude, p.longitude)
