@@ -757,12 +757,15 @@ struct SpotCompareSheet: View {
             if rows.isEmpty {
                 Text(loading ? "計算中" : "登録した釣り場がありません").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
             }
-            VStack(spacing: DS.Spacing.s) {
-                ForEach(rows) { r in
-                    Button { model.selectForHome(r.spot); dismiss() } label: { row(r) }.buttonStyle(.plain)
+            // 釣り場が多いと行が画面に収まらず、上の切替と日付が画面の外へ押し出されていた（2026-11-25 開発者の画面、12 か所）。
+            // 行の部分だけを縦に送れるようにして、切替・日付・下の説明は動かさない
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: DS.Spacing.s) {
+                    ForEach(rows) { r in
+                        Button { model.selectForHome(r.spot); dismiss() } label: { row(r) }.buttonStyle(.plain)
+                    }
                 }
             }
-            Spacer()
             Text("タップでホームの釣り場にする · 予報の先は潮と光だけで計算").font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
         }
     }
@@ -846,6 +849,11 @@ struct PortWindList: View {
             }
             if rows.isEmpty {
                 Text(emptyText).font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+                // 取れなかったときは、その場でやり直せる
+                if !places.isEmpty, !services.portWind.loading, services.portWind.lastError != nil {
+                    Button("もう一度取る") { Task { await services.portWind.load(places: places) } }
+                        .font(DS.Font.caption).foregroundStyle(DS.Color.accent).buttonStyle(.plain)
+                }
             }
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(spacing: DS.Spacing.s) {
