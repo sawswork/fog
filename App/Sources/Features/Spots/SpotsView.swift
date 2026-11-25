@@ -846,6 +846,11 @@ struct PortWindList: View {
             }
             if rows.isEmpty {
                 Text(emptyText).font(DS.Font.caption).foregroundStyle(DS.Color.textTertiary)
+                // 取れなかったときは、その場でやり直せる
+                if !places.isEmpty, !services.portWind.loading, services.portWind.lastError != nil {
+                    Button("もう一度取る") { Task { await services.portWind.load(places: places) } }
+                        .font(DS.Font.caption).foregroundStyle(DS.Color.accent).buttonStyle(.plain)
+                }
             }
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(spacing: DS.Spacing.s) {

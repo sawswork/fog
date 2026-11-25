@@ -13,15 +13,31 @@ final class PortWindService {
     private(set) var lastError: String?
     private var fetchedAt: [String: Date] = [:]
 
-    /// まだ無い・古い升だけ取る
+    private var inFlight: Task<Void, Never>?
+
+    /// まだ無い・古い升だけ取る。
+    /// 通信は、呼んだ画面の処理とは切り離して走らせる。以前は画面の処理の中で通信していて、画面を開いた直後に
+    /// その処理が切り替わる（港の一覧が入って作り直される）と通信ごと取り消され、「取れませんでした（cancelled）」で
+    /// 何も出なかった（2026-11-25 開発者の画面）。取得の最中にもう一度呼ばれたら、終わるのを待ってから足りない分だけ取る
     func load(places: [PortWind.Place], now: Date = .now) async {
-        guard !loading else { return }
+        if let running = inFlight { await running.value }
         let stale = PortWind.cells(for: places).filter { (fetchedAt[$0.key] ?? .distantPast) < now.addingTimeInterval(-Self.ttl) }
         guard !stale.isEmpty else { return }
+        let requests = PortWind.urls(cells: stale)
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.fetch(requests, now: now)
+        }
+        inFlight = task
+        await task.value
+        if inFlight == task { inFlight = nil }
+    }
+
+    private func fetch(_ requests: [(keys: [String], url: URL)], now: Date) async {
         loading = true
         defer { loading = false }
         var failure: String?
-        for request in PortWind.urls(cells: stale) {
+        for request in requests {
             do {
                 var r = URLRequest(url: request.url)
                 r.timeoutInterval = 30
@@ -36,9 +52,10 @@ final class PortWindService {
                     fetchedAt[key] = now
                 }
             } catch {
-                failure = error.localizedDescription
+                failure = (error as? URLError)?.code == .notConnectedToInternet ? "圏外です" : error.localizedDescription
             }
         }
         lastError = failure
+        Perf.mark("港の風：\(requests.count) 回の取得、\(failure ?? "成功")")
     }
 }
