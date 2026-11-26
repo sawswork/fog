@@ -30,27 +30,27 @@ final class PortWindTests: XCTestCase {
     }
 
     func testCells() {
-        XCTAssertEqual(PortWind.cellKey(for: Coordinate(latitude: 41.816, longitude: 140.654)), "41.80,140.65")
-        XCTAssertEqual(PortWind.cellKey(for: Coordinate(latitude: 41.83, longitude: 140.68)), "41.85,140.70")
+        XCTAssertEqual(PortWind.cellKey(for: Coordinate(latitude: 41.816, longitude: 140.654)), "41.80,140.70")
+        XCTAssertEqual(PortWind.cellKey(for: Coordinate(latitude: 41.86, longitude: 140.76)), "41.90,140.80")
         let places = [
             PortWind.Place(id: "a", name: "A", coordinate: Coordinate(latitude: 41.816, longitude: 140.654), isSpot: false),
             PortWind.Place(id: "b", name: "B", coordinate: Coordinate(latitude: 41.81, longitude: 140.66), isSpot: false),   // A と同じ升
             PortWind.Place(id: "c", name: "C", coordinate: Coordinate(latitude: 42.10, longitude: 140.57), isSpot: false),
         ]
         let cells = PortWind.cells(for: places)
-        XCTAssertEqual(cells.map { $0.key }, ["41.80,140.65", "42.10,140.55"])
-        XCTAssertEqual(cells[1].center.longitude, 140.55, accuracy: 1e-9)
+        XCTAssertEqual(cells.map { $0.key }, ["41.80,140.70", "42.10,140.60"])
+        XCTAssertEqual(cells[1].center.longitude, 140.6, accuracy: 1e-9)
         let urls = PortWind.urls(cells: cells, forecastDays: 2)
         XCTAssertEqual(urls.count, 1)
         XCTAssertEqual(urls[0].keys, cells.map { $0.key })
         let u = urls[0].url.absoluteString
         XCTAssertTrue(u.hasPrefix("https://api.open-meteo.com/v1/forecast?"), u)
         XCTAssertTrue(u.contains("latitude=41.80,42.10"), u)
-        XCTAssertTrue(u.contains("longitude=140.65,140.55"), u)
+        XCTAssertTrue(u.contains("longitude=140.70,140.60"), u)
         XCTAssertTrue(u.contains("wind_speed_unit=ms"), u)
         XCTAssertTrue(u.contains("hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m"), u)
         // 地点が多ければ分ける
-        XCTAssertEqual(PortWind.urls(cells: cells, chunk: 1).map { $0.keys }, [["41.80,140.65"], ["42.10,140.55"]])
+        XCTAssertEqual(PortWind.urls(cells: cells, chunk: 1).map { $0.keys }, [["41.80,140.70"], ["42.10,140.60"]])
         XCTAssertTrue(PortWind.urls(cells: []).isEmpty)
     }
 
